@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { db } from '../../db/client';
 import { expenses } from '../../db/schema';
@@ -14,12 +14,25 @@ export default function BudgetScreen() {
   const expenseList = allExpenses || [];
   const totalSpent = expenseList.reduce((acc, curr) => acc + (curr.amount || 0), 0);
 
-  // Simple aggregation for "Bar Chart" (Last 5 transactions for demo)
+  // --- 1. Category Breakdown Logic ---
+  const categoryStats = useMemo(() => {
+    const map = new Map<string, number>();
+    expenseList.forEach(e => {
+      const current = map.get(e.category) || 0;
+      map.set(e.category, current + e.amount);
+    });
+    
+    // Convert to array and sort by amount desc
+    return Array.from(map.entries())
+      .map(([cat, amount]) => ({ cat, amount, percent: totalSpent > 0 ? (amount / totalSpent) * 100 : 0 }))
+      .sort((a, b) => b.amount - a.amount);
+  }, [expenseList, totalSpent]);
+
+  // --- 2. Bar Chart Data (Last 7 Days) ---
   const chartData = expenseList.slice(0, 7).map(e => ({
     label: new Date(e.date!).getDate().toString(),
     value: e.amount,
   })).reverse();
-
   const maxVal = Math.max(...chartData.map(d => d.value), 100);
 
   return (
@@ -28,7 +41,7 @@ export default function BudgetScreen() {
         <Text style={styles.title}>Spending</Text>
       </View>
 
-      {/* Main KPI */}
+      {/* KPI Card */}
       <View style={styles.kpiCard}>
         <Text style={styles.kpiLabel}>Total Spent (All Time)</Text>
         <Text style={styles.kpiValue}>${totalSpent.toFixed(2)}</Text>
@@ -38,7 +51,7 @@ export default function BudgetScreen() {
         </View>
       </View>
 
-      {/* Simple Bar Chart */}
+      {/* Activity Chart */}
       <View style={styles.chartCard}>
         <Text style={styles.sectionTitle}>Recent Activity</Text>
         <View style={styles.chartArea}>
@@ -52,7 +65,27 @@ export default function BudgetScreen() {
         </View>
       </View>
 
-      {/* Transactions */}
+      {/* --- NEW: Category Breakdown --- */}
+      <View style={styles.sectionContainer}>
+        <Text style={styles.sectionTitle}>Breakdown by Category</Text>
+        <View style={styles.breakdownCard}>
+          {categoryStats.length === 0 && <Text style={styles.emptyText}>No expenses yet.</Text>}
+          {categoryStats.map((item) => (
+            <View key={item.cat} style={styles.catRow}>
+              <View style={styles.catRowHeader}>
+                <Text style={styles.catName}>{item.cat}</Text>
+                <Text style={styles.catAmount}>${item.amount.toFixed(0)}</Text>
+              </View>
+              <View style={styles.progressBg}>
+                <View style={[styles.progressFill, { width: `${item.percent}%` }]} />
+              </View>
+              <Text style={styles.catPercent}>{item.percent.toFixed(1)}%</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+
+      {/* Transactions List */}
       <View style={styles.listContainer}>
         <Text style={styles.sectionTitle}>Transactions</Text>
         {expenseList.map((item) => (
@@ -86,12 +119,23 @@ const styles = StyleSheet.create({
   trendRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   trendText: { color: '#10b981', fontWeight: '600', fontSize: 12 },
 
-  chartCard: { backgroundColor: '#fff', padding: 16, borderRadius: 16, marginBottom: 16, borderWidth: 1, borderColor: '#e2e8f0' },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#0f172a', marginBottom: 16 },
-  chartArea: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', height: 120, paddingBottom: 10 },
+  chartCard: { backgroundColor: '#fff', padding: 16, borderRadius: 16, marginBottom: 20, borderWidth: 1, borderColor: '#e2e8f0' },
+  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#0f172a', marginBottom: 12 },
+  chartArea: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', height: 100, paddingBottom: 10 },
   barGroup: { alignItems: 'center', gap: 8, flex: 1 },
   bar: { width: 12, backgroundColor: '#cbd5e1', borderRadius: 6 },
   barLabel: { fontSize: 10, color: '#94a3b8' },
+
+  sectionContainer: { marginBottom: 20 },
+  breakdownCard: { backgroundColor: '#fff', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#e2e8f0' },
+  catRow: { marginBottom: 16 },
+  catRowHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
+  catName: { fontSize: 14, fontWeight: '600', color: '#0f172a' },
+  catAmount: { fontSize: 14, fontWeight: '700', color: '#0f172a' },
+  progressBg: { height: 6, backgroundColor: '#f1f5f9', borderRadius: 3, overflow: 'hidden' },
+  progressFill: { height: '100%', backgroundColor: '#0f172a', borderRadius: 3 },
+  catPercent: { fontSize: 10, color: '#94a3b8', marginTop: 4, textAlign: 'right' },
+  emptyText: { color: '#94a3b8', textAlign: 'center', fontSize: 13 },
 
   listContainer: { paddingBottom: 40 },
   item: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', padding: 16, borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: '#f1f5f9' },

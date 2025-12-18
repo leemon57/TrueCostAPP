@@ -5,24 +5,34 @@ import { Ionicons } from '@expo/vector-icons';
 import { db } from '../../db/client';
 import { loanScenarios } from '../../db/schema';
 
+type Frequency = 'MONTHLY' | 'BIWEEKLY' | 'WEEKLY';
+type RateSource = 'FIXED' | 'CENTRAL_BANK_BASELINE' | 'MARKET_AI';
+
 export default function AddScenarioScreen() {
   const [form, setForm] = useState({
     name: '',
     principal: '',
     termMonths: '',
-    rate: '', // Fixed annual rate
+    rate: '', // Fixed rate OR Spread
   });
+  
+  const [frequency, setFrequency] = useState<Frequency>('MONTHLY');
+  const [rateSource, setRateSource] = useState<RateSource>('FIXED');
 
-  // --- Live Calculation (Simplified) ---
+  // --- Live Calculation ---
   const projection = useMemo(() => {
     const P = parseFloat(form.principal) || 0;
     const r_annual = parseFloat(form.rate) || 0;
     const months = parseFloat(form.termMonths) || 0;
     
-    if (P === 0 || months === 0) return { totalInterest: 0, monthlyPayment: 0 };
+    if (P === 0 || months === 0) return { totalInterest: 0, payment: 0 };
 
-    const r_period = r_annual / 12; // Assuming monthly for quick calc
-    const n_periods = months;
+    let paymentsPerYear = 12;
+    if (frequency === 'BIWEEKLY') paymentsPerYear = 26;
+    if (frequency === 'WEEKLY') paymentsPerYear = 52;
+
+    const r_period = r_annual / paymentsPerYear;
+    const n_periods = (months / 12) * paymentsPerYear;
 
     let payment = 0;
     if (r_annual === 0) payment = P / n_periods;
@@ -31,9 +41,9 @@ export default function AddScenarioScreen() {
     const totalPaid = payment * n_periods;
     return { 
       totalInterest: totalPaid - P, 
-      monthlyPayment: payment 
+      payment: payment 
     };
-  }, [form]);
+  }, [form, frequency]);
 
   const handleSave = async () => {
     if (!form.name || !form.principal) return;
@@ -42,14 +52,25 @@ export default function AddScenarioScreen() {
       name: form.name,
       principal: parseFloat(form.principal),
       termMonths: parseInt(form.termMonths) || 12,
-      paymentFrequency: 'MONTHLY',
-      rateSource: 'FIXED',
-      fixedAnnualRate: parseFloat(form.rate) || 0,
+      paymentFrequency: frequency,
+      rateSource: rateSource,
+      // If Fixed, save to fixedAnnualRate. If Var, save to spread.
+      fixedAnnualRate: rateSource === 'FIXED' ? (parseFloat(form.rate) || 0) : null,
+      spreadOverPolicyRate: rateSource !== 'FIXED' ? (parseFloat(form.rate) || 0) : null,
       currency: 'CAD',
     });
     
     router.back();
   };
+
+  const renderOption = (label: string, selected: boolean, onPress: () => void) => (
+    <TouchableOpacity 
+      onPress={onPress}
+      style={[styles.optionBtn, selected && styles.optionBtnSelected]}
+    >
+      <Text style={[styles.optionText, selected && styles.optionTextSelected]}>{label}</Text>
+    </TouchableOpacity>
+  );
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
@@ -65,15 +86,15 @@ export default function AddScenarioScreen() {
 
         {/* Impact Card */}
         <View style={styles.impactCard}>
-          <Text style={styles.impactTitle}>Projected Cost</Text>
+          <Text style={styles.impactTitle}>Live Projection</Text>
           <View style={styles.impactRow}>
             <View>
-              <Text style={styles.impactLabel}>Interest</Text>
+              <Text style={styles.impactLabel}>Total Interest</Text>
               <Text style={styles.impactValue}>${projection.totalInterest.toFixed(0)}</Text>
             </View>
             <View style={{ alignItems: 'flex-end' }}>
-              <Text style={styles.impactLabel}>Payment /mo</Text>
-              <Text style={styles.impactValue}>${projection.monthlyPayment.toFixed(2)}</Text>
+              <Text style={styles.impactLabel}>Payment ({frequency.toLowerCase()})</Text>
+              <Text style={styles.impactValue}>${projection.payment.toFixed(2)}</Text>
             </View>
           </View>
         </View>
@@ -108,23 +129,42 @@ export default function AddScenarioScreen() {
                 onChangeText={t => setForm({...form, termMonths: t})} 
               />
             </View>
-            <View style={{ flex: 1, marginLeft: 8 }}>
-              <Text style={styles.label}>Annual Rate (0.05)</Text>
-              <TextInput 
-                style={styles.input} 
-                placeholder="0.05" 
-                keyboardType="numeric"
-                value={form.rate}
-                onChangeText={t => setForm({...form, rate: t})} 
-              />
-            </View>
+          </View>
+
+          {/* Payment Frequency */}
+          <Text style={styles.label}>Payment Frequency</Text>
+          <View style={styles.optionsRow}>
+            {renderOption('Monthly', frequency === 'MONTHLY', () => setFrequency('MONTHLY'))}
+            {renderOption('Bi-Weekly', frequency === 'BIWEEKLY', () => setFrequency('BIWEEKLY'))}
+            {renderOption('Weekly', frequency === 'WEEKLY', () => setFrequency('WEEKLY'))}
+          </View>
+
+          {/* Rate Source */}
+          <Text style={[styles.label, { marginTop: 16 }]}>Interest Rate Type</Text>
+          <View style={styles.optionsRow}>
+            {renderOption('Fixed', rateSource === 'FIXED', () => setRateSource('FIXED'))}
+            {renderOption('Variable', rateSource !== 'FIXED', () => setRateSource('MARKET_AI'))}
+          </View>
+
+          {/* Rate Input */}
+          <View style={{ marginTop: 16 }}>
+            <Text style={styles.label}>
+              {rateSource === 'FIXED' ? 'Annual Interest Rate (0.05 = 5%)' : 'Spread Over Prime (0.02 = +2%)'}
+            </Text>
+            <TextInput 
+              style={styles.input} 
+              placeholder="0.05" 
+              keyboardType="numeric"
+              value={form.rate}
+              onChangeText={t => setForm({...form, rate: t})} 
+            />
           </View>
 
           <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
             <Text style={styles.saveBtnText}>Save Scenario</Text>
           </TouchableOpacity>
         </View>
-
+        <View style={{ height: 40 }} />
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -144,9 +184,15 @@ const styles = StyleSheet.create({
 
   form: { padding: 20 },
   label: { fontSize: 12, fontWeight: '600', color: '#64748b', marginBottom: 6, textTransform: 'uppercase' },
-  input: { backgroundColor: '#fff', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', fontSize: 16, marginBottom: 20 },
+  input: { backgroundColor: '#fff', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', fontSize: 16, marginBottom: 16 },
   row: { flexDirection: 'row' },
+  
+  optionsRow: { flexDirection: 'row', gap: 8 },
+  optionBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0', alignItems: 'center', backgroundColor: '#fff' },
+  optionBtnSelected: { backgroundColor: '#0f172a', borderColor: '#0f172a' },
+  optionText: { fontSize: 13, fontWeight: '600', color: '#64748b' },
+  optionTextSelected: { color: '#fff' },
 
-  saveBtn: { backgroundColor: '#0f172a', padding: 18, borderRadius: 14, alignItems: 'center', marginTop: 10 },
+  saveBtn: { backgroundColor: '#0f172a', padding: 18, borderRadius: 14, alignItems: 'center', marginTop: 20 },
   saveBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
 });
