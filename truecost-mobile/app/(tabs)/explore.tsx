@@ -1,112 +1,104 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
+import { db } from '../../db/client';
+import { expenses } from '../../db/schema';
+import { desc } from 'drizzle-orm';
+import { Ionicons } from '@expo/vector-icons';
 
-import { Collapsible } from '@/components/ui/collapsible';
-import { ExternalLink } from '@/components/external-link';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Fonts } from '@/constants/theme';
+export default function BudgetScreen() {
+  const { data: allExpenses } = useLiveQuery(
+    db.select().from(expenses).orderBy(desc(expenses.date))
+  );
 
-export default function TabTwoScreen() {
+  const expenseList = allExpenses || [];
+  const totalSpent = expenseList.reduce((acc, curr) => acc + (curr.amount || 0), 0);
+
+  // Simple aggregation for "Bar Chart" (Last 5 transactions for demo)
+  const chartData = expenseList.slice(0, 7).map(e => ({
+    label: new Date(e.date!).getDate().toString(),
+    value: e.amount,
+  })).reverse();
+
+  const maxVal = Math.max(...chartData.map(d => d.value), 100);
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}
-      headerImage={
-        <IconSymbol
-          size={310}
-          color="#808080"
-          name="chevron.left.forwardslash.chevron.right"
-          style={styles.headerImage}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText
-          type="title"
-          style={{
-            fontFamily: Fonts.rounded,
-          }}>
-          Explore
-        </ThemedText>
-      </ThemedView>
-      <ThemedText>This app includes example code to help you get started.</ThemedText>
-      <Collapsible title="File-based routing">
-        <ThemedText>
-          This app has two screens:{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/explore.tsx</ThemedText>
-        </ThemedText>
-        <ThemedText>
-          The layout file in <ThemedText type="defaultSemiBold">app/(tabs)/_layout.tsx</ThemedText>{' '}
-          sets up the tab navigator.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/router/introduction">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Android, iOS, and web support">
-        <ThemedText>
-          You can open this project on Android, iOS, and the web. To open the web version, press{' '}
-          <ThemedText type="defaultSemiBold">w</ThemedText> in the terminal running this project.
-        </ThemedText>
-      </Collapsible>
-      <Collapsible title="Images">
-        <ThemedText>
-          For static images, you can use the <ThemedText type="defaultSemiBold">@2x</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">@3x</ThemedText> suffixes to provide files for
-          different screen densities
-        </ThemedText>
-        <Image
-          source={require('@/assets/images/react-logo.png')}
-          style={{ width: 100, height: 100, alignSelf: 'center' }}
-        />
-        <ExternalLink href="https://reactnative.dev/docs/images">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Light and dark mode components">
-        <ThemedText>
-          This template has light and dark mode support. The{' '}
-          <ThemedText type="defaultSemiBold">useColorScheme()</ThemedText> hook lets you inspect
-          what the user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Animations">
-        <ThemedText>
-          This template includes an example of an animated component. The{' '}
-          <ThemedText type="defaultSemiBold">components/HelloWave.tsx</ThemedText> component uses
-          the powerful{' '}
-          <ThemedText type="defaultSemiBold" style={{ fontFamily: Fonts.mono }}>
-            react-native-reanimated
-          </ThemedText>{' '}
-          library to create a waving hand animation.
-        </ThemedText>
-        {Platform.select({
-          ios: (
-            <ThemedText>
-              The <ThemedText type="defaultSemiBold">components/ParallaxScrollView.tsx</ThemedText>{' '}
-              component provides a parallax effect for the header image.
-            </ThemedText>
-          ),
-        })}
-      </Collapsible>
-    </ParallaxScrollView>
+    <ScrollView style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.title}>Spending</Text>
+      </View>
+
+      {/* Main KPI */}
+      <View style={styles.kpiCard}>
+        <Text style={styles.kpiLabel}>Total Spent (All Time)</Text>
+        <Text style={styles.kpiValue}>${totalSpent.toFixed(2)}</Text>
+        <View style={styles.trendRow}>
+          <Ionicons name="trending-down" size={16} color="#10b981" />
+          <Text style={styles.trendText}>Tracking Active</Text>
+        </View>
+      </View>
+
+      {/* Simple Bar Chart */}
+      <View style={styles.chartCard}>
+        <Text style={styles.sectionTitle}>Recent Activity</Text>
+        <View style={styles.chartArea}>
+          {chartData.map((d, i) => (
+            <View key={i} style={styles.barGroup}>
+              <View style={[styles.bar, { height: (d.value / maxVal) * 100 }]} />
+              <Text style={styles.barLabel}>{d.label}</Text>
+            </View>
+          ))}
+          {chartData.length === 0 && <Text style={{color: '#94a3b8'}}>No data yet.</Text>}
+        </View>
+      </View>
+
+      {/* Transactions */}
+      <View style={styles.listContainer}>
+        <Text style={styles.sectionTitle}>Transactions</Text>
+        {expenseList.map((item) => (
+          <View key={item.id} style={styles.item}>
+            <View style={styles.itemLeft}>
+              <View style={styles.iconBox}>
+                <Text style={styles.iconText}>{item.category.substring(0, 2).toUpperCase()}</Text>
+              </View>
+              <View>
+                <Text style={styles.itemCat}>{item.category}</Text>
+                <Text style={styles.itemDesc}>{item.description}</Text>
+              </View>
+            </View>
+            <Text style={styles.itemAmount}>-${item.amount.toFixed(2)}</Text>
+          </View>
+        ))}
+      </View>
+
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  headerImage: {
-    color: '#808080',
-    bottom: -90,
-    left: -35,
-    position: 'absolute',
-  },
-  titleContainer: {
-    flexDirection: 'row',
-    gap: 8,
-  },
+  container: { flex: 1, backgroundColor: '#f8fafc', padding: 16 },
+  header: { marginTop: 40, marginBottom: 20 },
+  title: { fontSize: 28, fontWeight: '800', color: '#0f172a' },
+
+  kpiCard: { backgroundColor: '#fff', padding: 24, borderRadius: 20, marginBottom: 16, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, elevation: 3 },
+  kpiLabel: { fontSize: 12, fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase' },
+  kpiValue: { fontSize: 36, fontWeight: '800', color: '#0f172a', marginVertical: 4 },
+  trendRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  trendText: { color: '#10b981', fontWeight: '600', fontSize: 12 },
+
+  chartCard: { backgroundColor: '#fff', padding: 16, borderRadius: 16, marginBottom: 16, borderWidth: 1, borderColor: '#e2e8f0' },
+  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#0f172a', marginBottom: 16 },
+  chartArea: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', height: 120, paddingBottom: 10 },
+  barGroup: { alignItems: 'center', gap: 8, flex: 1 },
+  bar: { width: 12, backgroundColor: '#cbd5e1', borderRadius: 6 },
+  barLabel: { fontSize: 10, color: '#94a3b8' },
+
+  listContainer: { paddingBottom: 40 },
+  item: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', padding: 16, borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: '#f1f5f9' },
+  itemLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  iconBox: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center' },
+  iconText: { fontSize: 12, fontWeight: '700', color: '#64748b' },
+  itemCat: { fontSize: 14, fontWeight: '600', color: '#0f172a' },
+  itemDesc: { fontSize: 12, color: '#94a3b8' },
+  itemAmount: { fontSize: 14, fontWeight: '700', color: '#0f172a' },
 });
