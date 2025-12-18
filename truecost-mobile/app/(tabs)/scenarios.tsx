@@ -45,12 +45,23 @@ export default function ScenariosScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Loan Scenarios</Text>
-        <TouchableOpacity 
-          style={styles.addButton} 
-          onPress={() => router.push('/scenarios/add')} // Navigate to the new Add Screen
-        >
-          <Ionicons name="add" size={24} color="#fff" />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          {/* COMPARE BUTTON */}
+          <TouchableOpacity 
+            style={[styles.iconButton, { backgroundColor: '#fff' }]} 
+            onPress={() => router.push('/compare')}
+          >
+            <Ionicons name="git-compare-outline" size={22} color="#0f172a" />
+          </TouchableOpacity>
+
+          {/* ADD BUTTON */}
+          <TouchableOpacity 
+            style={[styles.iconButton, { backgroundColor: '#10b981' }]} 
+            onPress={() => router.push('/scenarios/add')}
+          >
+            <Ionicons name="add" size={24} color="#fff" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* List */}
@@ -67,7 +78,12 @@ export default function ScenariosScreen() {
         renderItem={({ item }) => {
           const stats = getProjections(item);
           return (
-            <View style={styles.card}>
+            // WRAPPED IN TOUCHABLE OPACITY
+            <TouchableOpacity 
+              activeOpacity={0.7}
+              onPress={() => router.push(`/scenarios/${item.id}`)}
+              style={styles.card}
+            >
               <View style={styles.cardMain}>
                 <View>
                   <Text style={styles.cardTitle}>{item.name}</Text>
@@ -89,7 +105,7 @@ export default function ScenariosScreen() {
                   <Text style={styles.costRatio}>(+{stats.ratio.toFixed(1)}%)</Text>
                 </View>
               </View>
-            </View>
+            </TouchableOpacity>
           );
         }}
       />
@@ -101,7 +117,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8fafc', padding: 16 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, marginTop: 40 },
   title: { fontSize: 28, fontWeight: '800', color: '#0f172a' },
-  addButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#10b981', alignItems: 'center', justifyContent: 'center', shadowColor: '#10b981', shadowOpacity: 0.4, shadowRadius: 8, elevation: 4 },
+  iconButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 8, elevation: 4 },
   
   card: { backgroundColor: '#fff', borderRadius: 16, marginBottom: 16, padding: 16, borderWidth: 1, borderColor: '#e2e8f0', shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 5, elevation: 2 },
   cardMain: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
