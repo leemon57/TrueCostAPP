@@ -66,7 +66,7 @@ export default function ScenariosScreen() {
 
       {/* List */}
       <FlatList 
-        data={scenarios}
+        data={scenarios ?? []}
         keyExtractor={item => item.id}
         contentContainerStyle={{ paddingBottom: 100 }}
         ListEmptyComponent={

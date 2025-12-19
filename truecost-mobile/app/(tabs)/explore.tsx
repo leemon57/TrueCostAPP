@@ -1,17 +1,20 @@
-import React, { useMemo } from 'react';
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { db } from '../../db/client';
 import { expenses } from '../../db/schema';
 import { desc } from 'drizzle-orm';
 import { Ionicons } from '@expo/vector-icons';
+import ExpenseCalendar from '../../components/ExpenseCalendar';
 
 export default function BudgetScreen() {
   const { data: allExpenses } = useLiveQuery(
     db.select().from(expenses).orderBy(desc(expenses.date))
   );
 
-  const expenseList = allExpenses || [];
+  const expenseList = useMemo(() => allExpenses || [], [allExpenses]);
+  const [viewMode, setViewMode] = useState<'dashboard' | 'calendar'>('dashboard');
+
   const totalSpent = expenseList.reduce((acc, curr) => acc + (curr.amount || 0), 0);
 
   // --- 1. Category Breakdown Logic ---
@@ -22,13 +25,12 @@ export default function BudgetScreen() {
       map.set(e.category, current + e.amount);
     });
     
-    // Convert to array and sort by amount desc
     return Array.from(map.entries())
       .map(([cat, amount]) => ({ cat, amount, percent: totalSpent > 0 ? (amount / totalSpent) * 100 : 0 }))
       .sort((a, b) => b.amount - a.amount);
   }, [expenseList, totalSpent]);
 
-  // --- 2. Bar Chart Data (Last 7 Days) ---
+  // --- 2. Bar Chart Data ---
   const chartData = expenseList.slice(0, 7).map(e => ({
     label: new Date(e.date!).getDate().toString(),
     value: e.amount,
@@ -39,79 +41,110 @@ export default function BudgetScreen() {
     <ScrollView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Spending</Text>
-      </View>
-
-      {/* KPI Card */}
-      <View style={styles.kpiCard}>
-        <Text style={styles.kpiLabel}>Total Spent (All Time)</Text>
-        <Text style={styles.kpiValue}>${totalSpent.toFixed(2)}</Text>
-        <View style={styles.trendRow}>
-          <Ionicons name="trending-down" size={16} color="#10b981" />
-          <Text style={styles.trendText}>Tracking Active</Text>
+        
+        {/* Toggle Switch */}
+        <View style={styles.toggleContainer}>
+          <TouchableOpacity 
+            style={[styles.toggleBtn, viewMode === 'dashboard' && styles.toggleBtnActive]}
+            onPress={() => setViewMode('dashboard')}
+          >
+            <Ionicons name="pie-chart" size={14} color={viewMode === 'dashboard' ? '#0f172a' : '#64748b'} />
+            <Text style={[styles.toggleText, viewMode === 'dashboard' && styles.toggleTextActive]}>Dashboard</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.toggleBtn, viewMode === 'calendar' && styles.toggleBtnActive]}
+            onPress={() => setViewMode('calendar')}
+          >
+            <Ionicons name="calendar" size={14} color={viewMode === 'calendar' ? '#0f172a' : '#64748b'} />
+            <Text style={[styles.toggleText, viewMode === 'calendar' && styles.toggleTextActive]}>Calendar</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
-      {/* Activity Chart */}
-      <View style={styles.chartCard}>
-        <Text style={styles.sectionTitle}>Recent Activity</Text>
-        <View style={styles.chartArea}>
-          {chartData.map((d, i) => (
-            <View key={i} style={styles.barGroup}>
-              <View style={[styles.bar, { height: (d.value / maxVal) * 100 }]} />
-              <Text style={styles.barLabel}>{d.label}</Text>
-            </View>
-          ))}
-          {chartData.length === 0 && <Text style={{color: '#94a3b8'}}>No data yet.</Text>}
+      {viewMode === 'calendar' ? (
+        <View style={{ marginBottom: 40 }}>
+          <ExpenseCalendar expenses={expenseList} />
         </View>
-      </View>
-
-      {/* --- NEW: Category Breakdown --- */}
-      <View style={styles.sectionContainer}>
-        <Text style={styles.sectionTitle}>Breakdown by Category</Text>
-        <View style={styles.breakdownCard}>
-          {categoryStats.length === 0 && <Text style={styles.emptyText}>No expenses yet.</Text>}
-          {categoryStats.map((item) => (
-            <View key={item.cat} style={styles.catRow}>
-              <View style={styles.catRowHeader}>
-                <Text style={styles.catName}>{item.cat}</Text>
-                <Text style={styles.catAmount}>${item.amount.toFixed(0)}</Text>
-              </View>
-              <View style={styles.progressBg}>
-                <View style={[styles.progressFill, { width: `${item.percent}%` }]} />
-              </View>
-              <Text style={styles.catPercent}>{item.percent.toFixed(1)}%</Text>
+      ) : (
+        <>
+          {/* KPI Card */}
+          <View style={styles.kpiCard}>
+            <Text style={styles.kpiLabel}>Total Spent (All Time)</Text>
+            <Text style={styles.kpiValue}>${totalSpent.toFixed(2)}</Text>
+            <View style={styles.trendRow}>
+              <Ionicons name="trending-down" size={16} color="#10b981" />
+              <Text style={styles.trendText}>Tracking Active</Text>
             </View>
-          ))}
-        </View>
-      </View>
-
-      {/* Transactions List */}
-      <View style={styles.listContainer}>
-        <Text style={styles.sectionTitle}>Transactions</Text>
-        {expenseList.map((item) => (
-          <View key={item.id} style={styles.item}>
-            <View style={styles.itemLeft}>
-              <View style={styles.iconBox}>
-                <Text style={styles.iconText}>{item.category.substring(0, 2).toUpperCase()}</Text>
-              </View>
-              <View>
-                <Text style={styles.itemCat}>{item.category}</Text>
-                <Text style={styles.itemDesc}>{item.description}</Text>
-              </View>
-            </View>
-            <Text style={styles.itemAmount}>-${item.amount.toFixed(2)}</Text>
           </View>
-        ))}
-      </View>
 
+          {/* Activity Chart */}
+          <View style={styles.chartCard}>
+            <Text style={styles.sectionTitle}>Recent Activity</Text>
+            <View style={styles.chartArea}>
+              {chartData.map((d, i) => (
+                <View key={i} style={styles.barGroup}>
+                  <View style={[styles.bar, { height: (d.value / maxVal) * 100 }]} />
+                  <Text style={styles.barLabel}>{d.label}</Text>
+                </View>
+              ))}
+              {chartData.length === 0 && <Text style={{color: '#94a3b8'}}>No data yet.</Text>}
+            </View>
+          </View>
+
+          {/* Breakdown by Category */}
+          <View style={styles.sectionContainer}>
+            <Text style={styles.sectionTitle}>Breakdown by Category</Text>
+            <View style={styles.breakdownCard}>
+              {categoryStats.length === 0 && <Text style={styles.emptyText}>No expenses yet.</Text>}
+              {categoryStats.map((item) => (
+                <View key={item.cat} style={styles.catRow}>
+                  <View style={styles.catRowHeader}>
+                    <Text style={styles.catName}>{item.cat}</Text>
+                    <Text style={styles.catAmount}>${item.amount.toFixed(0)}</Text>
+                  </View>
+                  <View style={styles.progressBg}>
+                    <View style={[styles.progressFill, { width: `${item.percent}%` }]} />
+                  </View>
+                  <Text style={styles.catPercent}>{item.percent.toFixed(1)}%</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+
+          {/* Transactions List */}
+          <View style={styles.listContainer}>
+            <Text style={styles.sectionTitle}>Transactions</Text>
+            {expenseList.map((item) => (
+              <View key={item.id} style={styles.item}>
+                <View style={styles.itemLeft}>
+                  <View style={styles.iconBox}>
+                    <Text style={styles.iconText}>{item.category.substring(0, 2).toUpperCase()}</Text>
+                  </View>
+                  <View>
+                    <Text style={styles.itemCat}>{item.category}</Text>
+                    <Text style={styles.itemDesc}>{item.description}</Text>
+                  </View>
+                </View>
+                <Text style={styles.itemAmount}>-${item.amount.toFixed(2)}</Text>
+              </View>
+            ))}
+          </View>
+        </>
+      )}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8fafc', padding: 16 },
-  header: { marginTop: 40, marginBottom: 20 },
+  header: { marginTop: 40, marginBottom: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { fontSize: 28, fontWeight: '800', color: '#0f172a' },
+  
+  toggleContainer: { flexDirection: 'row', backgroundColor: '#e2e8f0', padding: 3, borderRadius: 10 },
+  toggleBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, gap: 6 },
+  toggleBtnActive: { backgroundColor: '#fff', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2 },
+  toggleText: { fontSize: 12, fontWeight: '600', color: '#64748b' },
+  toggleTextActive: { color: '#0f172a' },
 
   kpiCard: { backgroundColor: '#fff', padding: 24, borderRadius: 20, marginBottom: 16, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, elevation: 3 },
   kpiLabel: { fontSize: 12, fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase' },

@@ -13,7 +13,7 @@ export default function DashboardScreen() {
     db.select().from(loanScenarios).orderBy(desc(loanScenarios.createdAt))
   );
 
-  const scenarioList = scenarios || [];
+  const scenarioList = useMemo(() => scenarios || [], [scenarios]);
 
   const kpiStats = useMemo(() => {
     const totalPrincipal = scenarioList.reduce((acc, s) => acc + (s.principal || 0), 0);

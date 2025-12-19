@@ -2,13 +2,9 @@ import { Tabs } from 'expo-router';
 import React from 'react';
 import { Platform } from 'react-native';
 import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol'; // Or use Ionicons directly if preferred
 import { Ionicons } from '@expo/vector-icons';
-import { Colors } from '@/constants/theme'; 
-import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
   const activeColor = '#10b981'; // Emerald 500
 
   return (
