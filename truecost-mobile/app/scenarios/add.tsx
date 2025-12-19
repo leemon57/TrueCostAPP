@@ -22,7 +22,8 @@ export default function AddScenarioScreen() {
   // --- Live Calculation ---
   const projection = useMemo(() => {
     const P = parseFloat(form.principal) || 0;
-    const r_annual = parseFloat(form.rate) || 0;
+    const rateInput = parseFloat(form.rate) || 0;
+    const r_annual = rateInput > 1 ? rateInput / 100 : rateInput; // accept percentage or decimal
     const months = parseFloat(form.termMonths) || 0;
     
     if (P === 0 || months === 0) return { totalInterest: 0, payment: 0 };
@@ -48,6 +49,9 @@ export default function AddScenarioScreen() {
   const handleSave = async () => {
     if (!form.name || !form.principal) return;
 
+    const rateInput = parseFloat(form.rate) || 0;
+    const rateValue = rateInput > 1 ? rateInput / 100 : rateInput; // store as decimal
+
     await db.insert(loanScenarios).values({
       name: form.name,
       principal: parseFloat(form.principal),
@@ -55,10 +59,10 @@ export default function AddScenarioScreen() {
       paymentFrequency: frequency,
       rateSource: rateSource,
       // If Fixed, save to fixedAnnualRate. If Var, save to spread.
-      fixedAnnualRate: rateSource === 'FIXED' ? (parseFloat(form.rate) || 0) : null,
-      spreadOverPolicyRate: rateSource !== 'FIXED' ? (parseFloat(form.rate) || 0) : null,
+      fixedAnnualRate: rateSource === 'FIXED' ? rateValue : null,
+      spreadOverPolicyRate: rateSource !== 'FIXED' ? rateValue : null,
       currency: 'CAD',
-    });
+    }).run();
     
     router.back();
   };
@@ -149,11 +153,11 @@ export default function AddScenarioScreen() {
           {/* Rate Input */}
           <View style={{ marginTop: 16 }}>
             <Text style={styles.label}>
-              {rateSource === 'FIXED' ? 'Annual Interest Rate (0.05 = 5%)' : 'Spread Over Prime (0.02 = +2%)'}
+              {rateSource === 'FIXED' ? 'Annual Interest Rate (%)' : 'Spread Over Prime (%)'}
             </Text>
             <TextInput 
               style={styles.input} 
-              placeholder="0.05" 
+              placeholder="8.99" 
               keyboardType="numeric"
               value={form.rate}
               onChangeText={t => setForm({...form, rate: t})} 

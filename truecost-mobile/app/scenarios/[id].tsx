@@ -33,23 +33,43 @@ export default function ScenarioDetailScreen() {
   // Recalculate Projections for Display
   const stats = useMemo(() => {
     if (!scenario) return null;
-    const P = scenario.principal;
-    const r_annual = scenario.fixedAnnualRate || 0;
-    const months = scenario.termMonths;
-    const r_period = r_annual / 12; // Simple monthly assumption
+    const paymentsPerYear =
+      scenario.paymentFrequency === 'BIWEEKLY' ? 26 : scenario.paymentFrequency === 'WEEKLY' ? 52 : 12;
+    const periods = (scenario.termMonths / 12) * paymentsPerYear;
+    if (!periods) return null;
 
-    let payment = 0;
-    if (r_annual === 0) payment = P / months;
-    else payment = P * (r_period * Math.pow(1 + r_period, months)) / (Math.pow(1 + r_period, months) - 1);
+    const principal = scenario.principal;
+    const annualRate = scenario.fixedAnnualRate || 0;
+    const ratePerPeriod = annualRate / paymentsPerYear;
 
+    let paymentPerPeriod = 0;
+    if (annualRate === 0) paymentPerPeriod = principal / periods;
+    else
+      paymentPerPeriod =
+        principal * (ratePerPeriod * Math.pow(1 + ratePerPeriod, periods)) /
+        (Math.pow(1 + ratePerPeriod, periods) - 1);
+
+    const totalPaid = paymentPerPeriod * periods;
     return {
-      totalInterest: (payment * months) - P,
-      monthlyPayment: payment,
-      totalPaid: payment * months
+      totalInterest: totalPaid - principal,
+      paymentPerPeriod,
+      totalPaid,
+      paymentsPerYear,
     };
   }, [scenario]);
 
   if (!scenario || !stats) return <View style={styles.container}><Text>Loading...</Text></View>;
+
+  const paymentLabel = (() => {
+    switch (scenario.paymentFrequency) {
+      case 'BIWEEKLY':
+        return 'Bi-weekly Payment';
+      case 'WEEKLY':
+        return 'Weekly Payment';
+      default:
+        return 'Monthly Payment';
+    }
+  })();
 
   const formatMoney = (val: number) => 
     new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(val);
@@ -72,8 +92,8 @@ export default function ScenarioDetailScreen() {
 
         {/* Big Impact Card */}
         <View style={styles.card}>
-          <Text style={styles.cardLabel}>Monthly Payment</Text>
-          <Text style={styles.cardValueBig}>{formatMoney(stats.monthlyPayment)}</Text>
+          <Text style={styles.cardLabel}>{paymentLabel}</Text>
+          <Text style={styles.cardValueBig}>{formatMoney(stats.paymentPerPeriod)}</Text>
           
           <View style={styles.divider} />
           

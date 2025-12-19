@@ -147,7 +147,7 @@ export default function DashboardScreen() {
               <View>
                 <Text style={styles.itemName}>{s.name}</Text>
                 <Text style={styles.itemSub}>
-                  {formatMoney(s.principal)} / {s.rateSource === 'FIXED' ? 'Fixed' : 'Variable'}
+                  {formatMoney(s.principal)} · {s.rateSource === 'FIXED' ? 'Fixed' : 'Variable'}
                 </Text>
               </View>
             </View>
