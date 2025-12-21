@@ -2,23 +2,49 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { db } from '@/db/client';
-import { expenses } from '@/db/schema';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay } from 'date-fns';
+import { expenses, subscriptions } from '@/db/schema'; // Added subscriptions
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, getDate } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { AppColors } from '@/constants/Colors';
 
 export default function CalendarScreen() {
   const [selectedDate, setSelectedDate] = useState(new Date());
+  
+  // Fetch both Expenses and Subscriptions
   const { data: allExpenses } = useLiveQuery(db.select().from(expenses));
+  const { data: allSubs } = useLiveQuery(db.select().from(subscriptions));
 
   const daysInMonth = eachDayOfInterval({
     start: startOfMonth(selectedDate),
     end: endOfMonth(selectedDate),
   });
 
-  const getExpensesForDay = (date: Date) => allExpenses?.filter(e => isSameDay(e.date, date)) || [];
-  const selectedDayExpenses = getExpensesForDay(selectedDate);
+  // --- Logic to merge One-time Expenses + Recurring Subs ---
+  const getItemsForDay = (date: Date) => {
+    const dayExpenses = allExpenses?.filter(e => isSameDay(e.date, date)) || [];
+    
+    // Check for subscriptions that fall on this day of the month
+    const daySubs = allSubs?.filter(s => {
+      const start = new Date(s.firstBillDate);
+      // Simple check: Does the day of month match? (e.g., 15th == 15th)
+      // For a real app, you'd handle end-of-month logic (e.g. Feb 28 vs 30), but this works for 95% of cases.
+      const isMonthlyMatch = s.billingCycle === 'MONTHLY' && getDate(date) === getDate(start);
+      const isYearlyMatch = s.billingCycle === 'YEARLY' && getDate(date) === getDate(start) && date.getMonth() === start.getMonth();
+      
+      return isMonthlyMatch || isYearlyMatch;
+    }).map(s => ({
+      id: `sub-${s.id}`,
+      category: 'Subscription',
+      description: s.name, // Use sub name as description
+      amount: s.amount,
+      isRecurring: true // Flag to style differently
+    })) || [];
+
+    return [...dayExpenses, ...daySubs];
+  };
+
+  const selectedItems = getItemsForDay(selectedDate);
 
   return (
     <View style={styles.container}>
@@ -41,7 +67,7 @@ export default function CalendarScreen() {
           numColumns={7}
           scrollEnabled={false}
           renderItem={({ item }) => {
-            const hasExpense = getExpensesForDay(item).length > 0;
+            const hasItems = getItemsForDay(item).length > 0;
             const isSelected = isSameDay(item, selectedDate);
             return (
               <TouchableOpacity 
@@ -49,7 +75,7 @@ export default function CalendarScreen() {
                 onPress={() => setSelectedDate(item)}
               >
                 <Text style={[styles.dayText, isSelected && styles.selectedDayText]}>{format(item, 'd')}</Text>
-                {hasExpense && <View style={[styles.dot, isSelected && { backgroundColor: AppColors.accent }]} />}
+                {hasItems && <View style={[styles.dot, isSelected && { backgroundColor: AppColors.accent }]} />}
               </TouchableOpacity>
             );
           }}
@@ -59,13 +85,21 @@ export default function CalendarScreen() {
       <View style={styles.detailContainer}>
         <Text style={styles.detailTitle}>{format(selectedDate, 'EEEE, MMM d')}</Text>
         <FlatList
-          data={selectedDayExpenses}
-          keyExtractor={item => item.id}
+          data={selectedItems}
+          keyExtractor={item => item.id.toString()}
           ListEmptyComponent={<Text style={styles.emptyText}>No spending recorded.</Text>}
           renderItem={({ item }) => (
             <View style={styles.expenseItem}>
               <View>
-                <Text style={styles.expenseCategory}>{item.category}</Text>
+                <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
+                  <Text style={styles.expenseCategory}>{item.category}</Text>
+                  {/* Show a little badge if it's a subscription */}
+                  {item.isRecurring && (
+                    <View style={styles.recurringBadge}>
+                      <Ionicons name="sync" size={10} color="#fff" />
+                    </View>
+                  )}
+                </View>
                 {item.description && <Text style={styles.expenseNote}>{item.description}</Text>}
               </View>
               <Text style={styles.expenseAmount}>${item.amount.toFixed(2)}</Text>
@@ -99,6 +133,7 @@ const styles = StyleSheet.create({
   
   expenseItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: AppColors.secondary },
   expenseCategory: { fontSize: 16, fontWeight: '600', color: AppColors.text.primary },
+  recurringBadge: { backgroundColor: AppColors.accent, borderRadius: 8, width: 16, height: 16, alignItems: 'center', justifyContent: 'center' },
   expenseNote: { fontSize: 13, color: AppColors.text.secondary },
   expenseAmount: { fontSize: 16, fontWeight: '700', color: AppColors.text.primary },
 });

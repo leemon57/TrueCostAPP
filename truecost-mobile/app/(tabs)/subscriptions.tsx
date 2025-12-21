@@ -7,7 +7,6 @@ import { eq } from 'drizzle-orm';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { AppColors } from '@/constants/Colors';
-import { ScreenHeader } from '@/components/ui/ThemeComponents';
 
 export default function SubscriptionsTab() {
   const { data } = useLiveQuery(db.select().from(subscriptions));
@@ -62,6 +61,7 @@ export default function SubscriptionsTab() {
         )}
       />
 
+      {/* FIXED: Bottom is set to 110 to sit ABOVE the tab bar */}
       <TouchableOpacity style={styles.fab} onPress={() => router.push('/subscriptions/add')}>
         <Ionicons name="add" size={24} color="#fff" />
         <Text style={styles.fabText}>Add New</Text>
@@ -84,6 +84,8 @@ const styles = StyleSheet.create({
   deleteBtn: { padding: 10, opacity: 0.8 },
   
   empty: { textAlign: 'center', color: AppColors.text.secondary, marginTop: 40 },
-  fab: { position: 'absolute', bottom: 30, right: 20, backgroundColor: AppColors.primary, paddingVertical: 14, paddingHorizontal: 20, borderRadius: 30, flexDirection: 'row', alignItems: 'center', gap: 8, shadowColor: '#000', shadowOpacity: 0.2, elevation: 5, zIndex: 100 },
+  
+  // High zIndex and larger bottom margin to clear the Tab Bar
+  fab: { position: 'absolute', bottom: 110, right: 20, backgroundColor: AppColors.primary, paddingVertical: 14, paddingHorizontal: 20, borderRadius: 30, flexDirection: 'row', alignItems: 'center', gap: 8, shadowColor: '#000', shadowOpacity: 0.2, elevation: 5, zIndex: 100 },
   fabText: { color: '#fff', fontWeight: '600' }
 });
