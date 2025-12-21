@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Switch } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { eq } from 'drizzle-orm';
@@ -28,6 +28,12 @@ export default function ScenarioDetailScreen() {
         }
       }
     ]);
+  };
+
+  const toggleActive = async (val: boolean) => {
+    await db.update(loanScenarios)
+      .set({ includeInTotals: val })
+      .where(eq(loanScenarios.id, id as string));
   };
 
   // Recalculate Projections for Display
@@ -90,6 +96,19 @@ export default function ScenarioDetailScreen() {
         <Text style={styles.title}>{scenario.name}</Text>
         <Text style={styles.subtitle}>Created {new Date(scenario.createdAt!).toLocaleDateString()}</Text>
 
+        {/* Active Toggle Card */}
+        <View style={styles.toggleCard}>
+            <View style={{ flex: 1 }}>
+                <Text style={styles.toggleLabel}>Active in Budget</Text>
+                <Text style={styles.toggleSub}>Include these payments in your monthly calendar totals.</Text>
+            </View>
+            <Switch 
+                value={scenario.includeInTotals || false} 
+                onValueChange={toggleActive} 
+                trackColor={{ false: "#767577", true: "#10b981" }}
+            />
+        </View>
+
         {/* Big Impact Card */}
         <View style={styles.card}>
           <Text style={styles.cardLabel}>{paymentLabel}</Text>
@@ -143,6 +162,10 @@ const styles = StyleSheet.create({
   content: { padding: 24 },
   title: { fontSize: 28, fontWeight: '800', color: '#0f172a', marginBottom: 4 },
   subtitle: { fontSize: 14, color: '#64748b', marginBottom: 24 },
+
+  toggleCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 16, borderRadius: 16, marginBottom: 24, borderWidth: 1, borderColor: '#e2e8f0' },
+  toggleLabel: { fontSize: 16, fontWeight: '600', color: '#0f172a' },
+  toggleSub: { fontSize: 12, color: '#64748b', marginTop: 2, paddingRight: 10 },
 
   card: { backgroundColor: '#0f172a', borderRadius: 20, padding: 24, marginBottom: 32, shadowColor: '#0f172a', shadowOpacity: 0.3, shadowRadius: 10 },
   cardLabel: { color: '#94a3b8', fontSize: 12, fontWeight: '700', textTransform: 'uppercase', marginBottom: 4 },

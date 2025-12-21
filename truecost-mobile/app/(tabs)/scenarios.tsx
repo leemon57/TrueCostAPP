@@ -1,6 +1,6 @@
-﻿import React, { useCallback, useState } from "react";
+import React from "react";
 import { View, Text, FlatList, StyleSheet, TouchableOpacity } from "react-native";
-import { useFocusEffect } from "@react-navigation/native";
+import { useLiveQuery } from "drizzle-orm/expo-sqlite";
 import { db } from "../../db/client";
 import { loanScenarios } from "../../db/schema";
 import { desc } from "drizzle-orm";
@@ -8,18 +8,8 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 export default function ScenariosScreen() {
-  const [scenarios, setScenarios] = useState<typeof loanScenarios.$inferSelect[]>([]);
-
-  const loadScenarios = useCallback(async () => {
-    const rows = await db.select().from(loanScenarios).orderBy(desc(loanScenarios.createdAt));
-    setScenarios(rows);
-  }, []);
-
-  // Refresh when screen gains focus (e.g., after closing the add modal)
-  useFocusEffect(
-    useCallback(() => {
-      loadScenarios();
-    }, [loadScenarios])
+  const { data: scenarios } = useLiveQuery(
+    db.select().from(loanScenarios).orderBy(desc(loanScenarios.createdAt))
   );
 
   // Helper to replicate the Web's Math Engine for the card display
@@ -76,7 +66,7 @@ export default function ScenariosScreen() {
 
       {/* List */}
       <FlatList 
-        data={scenarios}
+        data={scenarios || []}
         keyExtractor={item => item.id}
         contentContainerStyle={{ paddingBottom: 100 }}
         ListEmptyComponent={
