@@ -1,124 +1,69 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Switch } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { eq } from 'drizzle-orm';
 import { Ionicons } from '@expo/vector-icons';
-import { db } from '../../db/client';
-import { loanScenarios } from '../../db/schema';
+import { db } from '@/db/client';
+import { loanScenarios } from '@/db/schema';
+import { AppColors } from '@/constants/Colors';
+import { calculateLoan } from '@/utils/loanCalculator';
+import { ScreenHeader } from '@/components/ui/ThemeComponents';
 
 export default function ScenarioDetailScreen() {
   const { id } = useLocalSearchParams();
-  
-  // Fetch specific scenario
-  const { data } = useLiveQuery(
-    db.select().from(loanScenarios).where(eq(loanScenarios.id, id as string))
-  );
+  const { data } = useLiveQuery(db.select().from(loanScenarios).where(eq(loanScenarios.id, id as string)));
   const scenario = data?.[0];
 
-  const handleDelete = async () => {
-    Alert.alert("Delete Scenario", "Are you sure? This cannot be undone.", [
+  if (!scenario) return <View style={styles.container} />;
+
+  // 1. Replaced complex useMemo with utility
+  const stats = calculateLoan({
+    principal: scenario.principal,
+    months: scenario.termMonths,
+    rate: scenario.fixedAnnualRate || 0,
+    frequency: scenario.paymentFrequency
+  });
+
+  const handleDelete = () => {
+    Alert.alert("Delete Model", "This cannot be undone.", [
       { text: "Cancel", style: "cancel" },
-      { 
-        text: "Delete", 
-        style: "destructive", 
-        onPress: async () => {
+      { text: "Delete", style: "destructive", onPress: async () => {
           await db.delete(loanScenarios).where(eq(loanScenarios.id, id as string));
           router.back();
-        }
-      }
+      }}
     ]);
   };
 
   const toggleActive = async (val: boolean) => {
-    await db.update(loanScenarios)
-      .set({ includeInTotals: val })
-      .where(eq(loanScenarios.id, id as string));
+    await db.update(loanScenarios).set({ includeInTotals: val }).where(eq(loanScenarios.id, id as string));
   };
 
-  // Recalculate Projections for Display
-  const stats = useMemo(() => {
-    if (!scenario) return null;
-    const paymentsPerYear =
-      scenario.paymentFrequency === 'BIWEEKLY' ? 26 : scenario.paymentFrequency === 'WEEKLY' ? 52 : 12;
-    const periods = (scenario.termMonths / 12) * paymentsPerYear;
-    if (!periods) return null;
-
-    const principal = scenario.principal;
-    const annualRate = scenario.fixedAnnualRate || 0;
-    const ratePerPeriod = annualRate / paymentsPerYear;
-
-    let paymentPerPeriod = 0;
-    if (annualRate === 0) paymentPerPeriod = principal / periods;
-    else
-      paymentPerPeriod =
-        principal * (ratePerPeriod * Math.pow(1 + ratePerPeriod, periods)) /
-        (Math.pow(1 + ratePerPeriod, periods) - 1);
-
-    const totalPaid = paymentPerPeriod * periods;
-    return {
-      totalInterest: totalPaid - principal,
-      paymentPerPeriod,
-      totalPaid,
-      paymentsPerYear,
-    };
-  }, [scenario]);
-
-  if (!scenario || !stats) return <View style={styles.container}><Text>Loading...</Text></View>;
-
-  const paymentLabel = (() => {
-    switch (scenario.paymentFrequency) {
-      case 'BIWEEKLY':
-        return 'Bi-weekly Payment';
-      case 'WEEKLY':
-        return 'Weekly Payment';
-      default:
-        return 'Monthly Payment';
-    }
-  })();
-
-  const formatMoney = (val: number) => 
-    new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(val);
+  const formatMoney = (val: number) => new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(val);
 
   return (
     <ScrollView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}>
-          <Ionicons name="arrow-back" size={24} color="#0f172a" />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={handleDelete} style={[styles.iconBtn, { backgroundColor: '#fee2e2' }]}>
-          <Ionicons name="trash-outline" size={20} color="#ef4444" />
-        </TouchableOpacity>
-      </View>
+      <ScreenHeader title="Details" showBack />
 
       <View style={styles.content}>
-        <Text style={styles.title}>{scenario.name}</Text>
-        <Text style={styles.subtitle}>Created {new Date(scenario.createdAt!).toLocaleDateString()}</Text>
-
-        {/* Active Toggle Card */}
-        <View style={styles.toggleCard}>
-            <View style={{ flex: 1 }}>
-                <Text style={styles.toggleLabel}>Active in Budget</Text>
-                <Text style={styles.toggleSub}>Include these payments in your monthly calendar totals.</Text>
-            </View>
-            <Switch 
-                value={scenario.includeInTotals || false} 
-                onValueChange={toggleActive} 
-                trackColor={{ false: "#767577", true: "#10b981" }}
-            />
+        <View style={styles.titleRow}>
+           <View>
+             <Text style={styles.title}>{scenario.name}</Text>
+             <Text style={styles.subtitle}>Created {new Date(scenario.createdAt!).toLocaleDateString()}</Text>
+           </View>
+           <TouchableOpacity onPress={handleDelete} style={styles.deleteBtn}>
+             <Ionicons name="trash-outline" size={20} color={AppColors.danger} />
+           </TouchableOpacity>
         </View>
 
-        {/* Big Impact Card */}
+        {/* Impact Card */}
         <View style={styles.card}>
-          <Text style={styles.cardLabel}>{paymentLabel}</Text>
-          <Text style={styles.cardValueBig}>{formatMoney(stats.paymentPerPeriod)}</Text>
-          
+          <Text style={styles.cardLabel}>{scenario.paymentFrequency.toLowerCase()} Payment</Text>
+          <Text style={styles.cardValueBig}>{formatMoney(stats.payment)}</Text>
           <View style={styles.divider} />
-          
           <View style={styles.row}>
             <View>
-              <Text style={styles.cardLabel}>Total Interest</Text>
+              <Text style={styles.cardLabel}>Interest</Text>
               <Text style={styles.cardValue}>{formatMoney(stats.totalInterest)}</Text>
             </View>
             <View style={{ alignItems: 'flex-end' }}>
@@ -128,55 +73,61 @@ export default function ScenarioDetailScreen() {
           </View>
         </View>
 
-        {/* Details Grid */}
-        <Text style={styles.sectionTitle}>Loan Terms</Text>
-        <View style={styles.grid}>
-          <View style={styles.gridItem}>
-            <Text style={styles.gridLabel}>Principal</Text>
-            <Text style={styles.gridValue}>{formatMoney(scenario.principal)}</Text>
-          </View>
-          <View style={styles.gridItem}>
-            <Text style={styles.gridLabel}>Rate</Text>
-            <Text style={styles.gridValue}>{(scenario.fixedAnnualRate! * 100).toFixed(2)}%</Text>
-          </View>
-          <View style={styles.gridItem}>
-            <Text style={styles.gridLabel}>Duration</Text>
-            <Text style={styles.gridValue}>{scenario.termMonths} mo</Text>
-          </View>
-          <View style={styles.gridItem}>
-            <Text style={styles.gridLabel}>Frequency</Text>
-            <Text style={styles.gridValue}>{scenario.paymentFrequency}</Text>
-          </View>
+        {/* Active Toggle */}
+        <View style={styles.toggleCard}>
+            <View style={{ flex: 1 }}>
+                <Text style={styles.toggleLabel}>Active in Budget</Text>
+                <Text style={styles.toggleSub}>Include in monthly totals</Text>
+            </View>
+            <Switch 
+                value={scenario.includeInTotals || false} 
+                onValueChange={toggleActive} 
+                trackColor={{ false: AppColors.text.light, true: AppColors.accent }}
+            />
         </View>
 
+        {/* Details Grid */}
+        <Text style={styles.sectionTitle}>Parameters</Text>
+        <View style={styles.grid}>
+          <GridItem label="Principal" value={formatMoney(scenario.principal)} />
+          <GridItem label="Rate" value={`${(scenario.fixedAnnualRate! * 100).toFixed(2)}%`} />
+          <GridItem label="Duration" value={`${scenario.termMonths} mo`} />
+          <GridItem label="Frequency" value={scenario.paymentFrequency} />
+        </View>
       </View>
     </ScrollView>
   );
 }
 
+const GridItem = ({ label, value }: { label: string, value: string }) => (
+  <View style={styles.gridItem}>
+    <Text style={styles.gridLabel}>{label}</Text>
+    <Text style={styles.gridValue}>{value}</Text>
+  </View>
+);
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, paddingTop: 60 },
-  iconBtn: { padding: 10, backgroundColor: '#fff', borderRadius: 20, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5 },
-  
+  container: { flex: 1, backgroundColor: AppColors.background },
   content: { padding: 24 },
-  title: { fontSize: 28, fontWeight: '800', color: '#0f172a', marginBottom: 4 },
-  subtitle: { fontSize: 14, color: '#64748b', marginBottom: 24 },
+  titleRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 24 },
+  title: { fontSize: 26, fontWeight: '800', color: AppColors.text.primary },
+  subtitle: { fontSize: 13, color: AppColors.text.secondary },
+  deleteBtn: { padding: 10, backgroundColor: '#fee2e2', borderRadius: 12 },
 
-  toggleCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 16, borderRadius: 16, marginBottom: 24, borderWidth: 1, borderColor: '#e2e8f0' },
-  toggleLabel: { fontSize: 16, fontWeight: '600', color: '#0f172a' },
-  toggleSub: { fontSize: 12, color: '#64748b', marginTop: 2, paddingRight: 10 },
-
-  card: { backgroundColor: '#0f172a', borderRadius: 20, padding: 24, marginBottom: 32, shadowColor: '#0f172a', shadowOpacity: 0.3, shadowRadius: 10 },
-  cardLabel: { color: '#94a3b8', fontSize: 12, fontWeight: '700', textTransform: 'uppercase', marginBottom: 4 },
+  card: { backgroundColor: AppColors.primary, borderRadius: 24, padding: 24, marginBottom: 24, shadowColor: AppColors.primary, shadowOpacity: 0.3, shadowRadius: 10 },
+  cardLabel: { color: AppColors.text.secondary, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginBottom: 4 },
   cardValueBig: { color: '#fff', fontSize: 36, fontWeight: '700' },
-  cardValue: { color: '#10b981', fontSize: 18, fontWeight: '700' },
+  cardValue: { color: AppColors.accent, fontSize: 18, fontWeight: '700' },
   divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.1)', marginVertical: 20 },
   row: { flexDirection: 'row', justifyContent: 'space-between' },
 
-  sectionTitle: { fontSize: 18, fontWeight: '700', color: '#0f172a', marginBottom: 16 },
+  toggleCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: AppColors.surface, padding: 16, borderRadius: 16, marginBottom: 24, borderWidth: 1, borderColor: AppColors.border },
+  toggleLabel: { fontSize: 16, fontWeight: '600', color: AppColors.text.primary },
+  toggleSub: { fontSize: 13, color: AppColors.text.secondary },
+
+  sectionTitle: { fontSize: 18, fontWeight: '700', color: AppColors.text.primary, marginBottom: 12 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  gridItem: { width: '48%', backgroundColor: '#fff', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#e2e8f0' },
-  gridLabel: { fontSize: 12, color: '#64748b', marginBottom: 4 },
-  gridValue: { fontSize: 16, fontWeight: '600', color: '#0f172a' },
+  gridItem: { width: '48%', backgroundColor: AppColors.surface, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: AppColors.border },
+  gridLabel: { fontSize: 12, color: AppColors.text.secondary, marginBottom: 4 },
+  gridValue: { fontSize: 16, fontWeight: '600', color: AppColors.text.primary },
 });

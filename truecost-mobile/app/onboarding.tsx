@@ -1,191 +1,110 @@
-// app/onboarding.tsx
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-  Alert,
-  Keyboard,
-  TouchableWithoutFeedback,
-} from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Keyboard, TouchableWithoutFeedback } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { db } from '../db/client';
-import { users, budgetProfiles } from '../db/schema';
+import { db } from '@/db/client';
+import { budgetProfiles, users } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { Ionicons } from '@expo/vector-icons';
+import { AppColors } from '@/constants/Colors';
+import { AppButton, AppInput } from '@/components/ui/ThemeComponents';
 
 export default function OnboardingScreen() {
-  const [form, setForm] = useState({
-    monthlyIncome: '',
-    fixedExpenses: '',
-    variableExpenses: '',
-    savingsTarget: '',
-    emergencyFund: '',
-  });
+  const [step, setStep] = useState(1);
+  const [formData, setFormData] = useState({ incomeType: 'SALARY', salaryAmount: '', hourlyRate: '', hoursPerWeek: '' });
 
-  const handleSave = async () => {
-    // Basic validation
-    if (!form.monthlyIncome || !form.fixedExpenses) {
-      Alert.alert('Missing Info', 'Please fill in at least your Income and Fixed Expenses.');
-      return;
-    }
+  const handleNext = async () => {
+    if (step < 2) setStep(step + 1);
+    else await saveData();
+  };
 
+  const saveData = async () => {
     try {
-      // 1. Create a default user (since this is local-only)
-      // We check if one exists first to avoid duplicates if the app reset partially
-      const existingUser = await db.select().from(users).where(eq(users.email, 'user@local')).limit(1);
-
-      let userId = existingUser[0]?.id;
-
+      const existing = await db.select().from(users).where(eq(users.email, 'user@local')).limit(1);
+      let userId = existing[0]?.id;
       if (!userId) {
-        await db.insert(users).values({
-          email: 'user@local',
-          name: 'Primary User',
-        }).onConflictDoNothing();
+        await db.insert(users).values({ email: 'user@local', name: 'User' }).onConflictDoNothing();
         const created = await db.select().from(users).where(eq(users.email, 'user@local')).limit(1);
-        userId = created[0]?.id ?? '';
+        userId = created[0]?.id;
       }
 
-      const monthlyIncome = parseFloat(form.monthlyIncome) || 0;
+      const salaryAmount = parseFloat(formData.salaryAmount) || 0;
+      const hourlyRate = parseFloat(formData.hourlyRate) || 0;
+      const hoursPerWeek = parseFloat(formData.hoursPerWeek) || 0;
+      const monthlyIncome = formData.incomeType === 'SALARY' ? salaryAmount / 12 : (hourlyRate * hoursPerWeek * 52) / 12;
 
-      // 2. Create the Budget Profile
       await db.insert(budgetProfiles).values({
-        userId: userId,
-        monthlyIncome,
-        fixedExpenses: parseFloat(form.fixedExpenses) || 0,
-        variableExpenses: parseFloat(form.variableExpenses) || 0,
-        savingsPerMonthTarget: parseFloat(form.savingsTarget) || 0,
-        emergencyFund: parseFloat(form.emergencyFund) || 0,
-        incomeType: 'SALARY',
-        salaryAmount: monthlyIncome * 12,
-        payFrequency: 'MONTHLY',
-        currency: 'CAD',
+        userId, monthlyIncome, fixedExpenses: 0, variableExpenses: 0, savingsPerMonthTarget: 0, emergencyFund: 0,
+        incomeType: formData.incomeType, salaryAmount, hourlyRate, hoursPerWeek, payFrequency: 'MONTHLY',
       });
-
-      // 3. Navigate to Dashboard
       router.replace('/(tabs)');
-    } catch (error) {
-      console.error('Onboarding Error:', error);
-      Alert.alert('Error', 'Failed to save profile. Please try again.');
-    }
+    } catch (e) { console.error(e); }
   };
 
   return (
-    <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
-      style={{ flex: 1 }}
-    >
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.content}>
           <View style={styles.header}>
-            <Ionicons name="wallet" size={48} color="#10b981" />
-            <Text style={styles.title}>Welcome to TrueCost</Text>
-            <Text style={styles.subtitle}>
-              Let's set up your financial baseline to help calculate accurate loan scenarios.
-            </Text>
+            <Text style={styles.stepIndicator}>Step {step} of 2</Text>
+            <Text style={styles.title}>{step === 1 ? "How do you earn?" : "Let's crunch numbers"}</Text>
           </View>
 
-          <View style={styles.form}>
-            <Text style={styles.label}>Monthly Net Income ($)</Text>
-            <TextInput
-              style={styles.input}
-              keyboardType="numeric"
-              returnKeyType="done"
-              blurOnSubmit
-              onSubmitEditing={Keyboard.dismiss}
-              placeholder="e.g. 5000"
-              value={form.monthlyIncome}
-              onChangeText={(t) => setForm({ ...form, monthlyIncome: t })}
+        {step === 1 && (
+          <View style={styles.choiceContainer}>
+            <ChoiceCard 
+              label="Annual Salary" 
+              icon="briefcase-outline" 
+              selected={formData.incomeType === 'SALARY'} 
+              onPress={() => setFormData({...formData, incomeType: 'SALARY'})} 
             />
-
-            <Text style={styles.label}>Fixed Monthly Expenses ($)</Text>
-            <Text style={styles.helper}>Rent, mortgage, utilities, subscriptions...</Text>
-            <TextInput
-              style={styles.input}
-              keyboardType="numeric"
-              returnKeyType="done"
-              blurOnSubmit
-              onSubmitEditing={Keyboard.dismiss}
-              placeholder="e.g. 2000"
-              value={form.fixedExpenses}
-              onChangeText={(t) => setForm({ ...form, fixedExpenses: t })}
+            <ChoiceCard 
+              label="Hourly Wage" 
+              icon="time-outline" 
+              selected={formData.incomeType === 'HOURLY'} 
+              onPress={() => setFormData({...formData, incomeType: 'HOURLY'})} 
             />
-
-            <Text style={styles.label}>Variable Monthly Expenses ($)</Text>
-            <Text style={styles.helper}>Groceries, entertainment, dining out...</Text>
-            <TextInput
-              style={styles.input}
-              keyboardType="numeric"
-              returnKeyType="done"
-              blurOnSubmit
-              onSubmitEditing={Keyboard.dismiss}
-              placeholder="e.g. 800"
-              value={form.variableExpenses}
-              onChangeText={(t) => setForm({ ...form, variableExpenses: t })}
-            />
-
-            <Text style={styles.label}>Savings Target / Month ($)</Text>
-            <TextInput
-              style={styles.input}
-              keyboardType="numeric"
-              returnKeyType="done"
-              blurOnSubmit
-              onSubmitEditing={Keyboard.dismiss}
-              placeholder="e.g. 500"
-              value={form.savingsTarget}
-              onChangeText={(t) => setForm({ ...form, savingsTarget: t })}
-            />
-
-            <Text style={styles.label}>Current Emergency Fund ($)</Text>
-            <TextInput
-              style={styles.input}
-              keyboardType="numeric"
-              returnKeyType="done"
-              blurOnSubmit
-              onSubmitEditing={Keyboard.dismiss}
-              placeholder="e.g. 10000"
-              value={form.emergencyFund}
-              onChangeText={(t) => setForm({ ...form, emergencyFund: t })}
-            />
-
-            <TouchableOpacity style={styles.button} onPress={handleSave}>
-              <Text style={styles.buttonText}>Complete Setup</Text>
-            </TouchableOpacity>
           </View>
-        </ScrollView>
-      </TouchableWithoutFeedback>
-    </KeyboardAvoidingView>
+        )}
+
+        {step === 2 && (
+          <View style={styles.formContainer}>
+            {formData.incomeType === 'SALARY' ? (
+                <AppInput label="Annual Income (After Tax)" placeholder="65000" keyboardType="numeric" value={formData.salaryAmount} onChangeText={t => setFormData({...formData, salaryAmount: t})} />
+            ) : (
+              <>
+                <AppInput label="Hourly Rate ($)" placeholder="25.00" keyboardType="numeric" value={formData.hourlyRate} onChangeText={t => setFormData({...formData, hourlyRate: t})} />
+                <AppInput label="Hours per Week" placeholder="40" keyboardType="numeric" value={formData.hoursPerWeek} onChangeText={t => setFormData({...formData, hoursPerWeek: t})} />
+              </>
+            )}
+          </View>
+        )}
+
+          <View style={{ marginTop: 40 }}>
+            <AppButton title={step === 2 ? "Start Tracking" : "Next"} onPress={handleNext} />
+          </View>
+        </View>
+      </SafeAreaView>
+    </TouchableWithoutFeedback>
   );
 }
 
+const ChoiceCard = ({ label, icon, selected, onPress }: any) => (
+  <TouchableOpacity style={[styles.card, selected && styles.selectedCard]} onPress={onPress}>
+    <Ionicons name={icon} size={32} color={selected ? AppColors.accent : AppColors.text.secondary} />
+    <Text style={[styles.cardLabel, selected && { color: AppColors.text.primary }]}>{label}</Text>
+  </TouchableOpacity>
+);
+
 const styles = StyleSheet.create({
-  container: { flexGrow: 1, backgroundColor: '#fff', padding: 24, justifyContent: 'center' },
-  header: { alignItems: 'center', marginBottom: 32, marginTop: 40 },
-  title: { fontSize: 28, fontWeight: '700', color: '#0f172a', marginTop: 16 },
-  subtitle: { fontSize: 16, color: '#64748b', textAlign: 'center', marginTop: 8 },
-  form: { gap: 16 },
-  label: { fontSize: 14, fontWeight: '600', color: '#334155' },
-  helper: { fontSize: 12, color: '#94a3b8', marginBottom: 4, marginTop: -12 },
-  input: {
-    backgroundColor: '#f8fafc',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    color: '#0f172a',
-  },
-  button: {
-    backgroundColor: '#0f172a',
-    padding: 18,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  container: { flex: 1, backgroundColor: AppColors.background },
+  content: { padding: 24, flex: 1, justifyContent: 'center' },
+  header: { marginBottom: 40 },
+  stepIndicator: { color: AppColors.text.secondary, fontSize: 14, fontWeight: '600', marginBottom: 8 },
+  title: { fontSize: 32, fontWeight: '800', color: AppColors.text.primary },
+  choiceContainer: { flexDirection: 'row', gap: 16 },
+  card: { flex: 1, backgroundColor: AppColors.surface, padding: 24, borderRadius: 16, alignItems: 'center', gap: 12, borderWidth: 2, borderColor: AppColors.border },
+  selectedCard: { borderColor: AppColors.accent, backgroundColor: '#ecfdf5' },
+  cardLabel: { fontWeight: '600', color: AppColors.text.secondary },
+  formContainer: { gap: 8 },
 });

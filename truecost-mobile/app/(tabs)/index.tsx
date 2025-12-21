@@ -1,12 +1,14 @@
 ﻿import React, { useMemo } from "react";
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from "react-native";
 import { useLiveQuery } from "drizzle-orm/expo-sqlite";
-import { db } from "../../db/client";
-import { expenses, loanScenarios, subscriptions } from "../../db/schema";
-import { desc, sql } from "drizzle-orm";
+import { db } from "@/db/client";
+import { expenses, loanScenarios, subscriptions } from "@/db/schema";
+import { desc } from "drizzle-orm";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { format } from "date-fns";
+import { AppColors } from "@/constants/Colors";
+import { calculateLoan } from "@/utils/loanCalculator"; // Ensure we use the shared utility
 
 export default function DashboardScreen() {
   const { data: recentExpenses } = useLiveQuery(
@@ -16,23 +18,27 @@ export default function DashboardScreen() {
   const { data: allSubs } = useLiveQuery(db.select().from(subscriptions));
 
   const stats = useMemo(() => {
-    // Simple current month calculation
-    const currentMonthStr = new Date().toISOString().slice(0, 7); // YYYY-MM
-    
-    // 1. Calculate Expenses for this month (Approximation for demo)
     const monthExpenses = recentExpenses?.reduce((acc, e) => acc + e.amount, 0) || 0;
-
-    // 2. Calculate Monthly Subscription Load
+    
     const monthlySubs = allSubs?.reduce((acc, s) => {
-      return s.isActive ? acc + (s.billingCycle === 'MONTHLY' ? s.amount : s.amount / 12) : acc;
+      // Calculate monthly cost for subscriptions
+      const cost = s.billingCycle === 'YEARLY' ? s.amount / 12 : s.amount;
+      return acc + cost;
     }, 0) || 0;
 
-    // 3. Loan Load (Assuming monthly payment calculation is done or stored)
-    // Note: In a real app, you'd calculate exact PMT here. We'll approximate principal/12/term for now if PMT isn't stored.
     const monthlyLoans = allScenarios?.reduce((acc, s) => {
-        // Simplified dummy calculation for display if no computed PMT logic exists in DB yet
-        const approxPmt = (s.principal * (1 + (s.fixedAnnualRate || 0.05))) / (s.termMonths || 60);
-        return acc + approxPmt; 
+      // Use shared utility for consistency
+      const loanStats = calculateLoan({
+        principal: s.principal,
+        months: s.termMonths,
+        rate: s.fixedAnnualRate || 0.05,
+        frequency: s.paymentFrequency
+      });
+      // Convert to monthly equivalent if needed, but calculateLoan returns 'payment' per period.
+      // We need strictly monthly for the dashboard.
+      // A quick approximation for the dashboard total:
+      const annualCost = loanStats.payment * (s.paymentFrequency === 'BIWEEKLY' ? 26 : s.paymentFrequency === 'WEEKLY' ? 52 : 12);
+      return acc + (annualCost / 12);
     }, 0) || 0;
 
     return {
@@ -47,35 +53,30 @@ export default function DashboardScreen() {
     new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD', maximumFractionDigits: 0 }).format(val);
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      
-      <View style={styles.headerRow}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      {/* Header */}
+      <View style={styles.header}>
         <View>
           <Text style={styles.greeting}>Overview</Text>
           <Text style={styles.date}>{format(new Date(), 'MMMM yyyy')}</Text>
         </View>
-        <View style={styles.totalBadge}>
-          <Text style={styles.totalLabel}>Total Spend</Text>
-          <Text style={styles.totalValue}>{formatMoney(stats.total)}</Text>
-        </View>
+        {/* FIXED: Added onPress to navigate to settings */}
+        <TouchableOpacity style={styles.profileBtn} onPress={() => router.push('/settings')}>
+           <Ionicons name="person-circle-outline" size={32} color={AppColors.primary} />
+        </TouchableOpacity>
       </View>
 
-      {/* Breakdown Cards */}
-      <View style={styles.statsRow}>
-        <View style={styles.statCard}>
-          <Ionicons name="cart-outline" size={20} color="#f59e0b" />
-          <Text style={styles.statValue}>{formatMoney(stats.expenses)}</Text>
-          <Text style={styles.statLabel}>Expenses</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Ionicons name="sync-outline" size={20} color="#3b82f6" />
-          <Text style={styles.statValue}>{formatMoney(stats.fixed)}</Text>
-          <Text style={styles.statLabel}>Subs</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Ionicons name="home-outline" size={20} color="#6366f1" />
-          <Text style={styles.statValue}>{formatMoney(stats.loans)}</Text>
-          <Text style={styles.statLabel}>Loans</Text>
+      {/* Main Stats Card */}
+      <View style={styles.totalCard}>
+        <Text style={styles.totalLabel}>Total Monthly Spend</Text>
+        <Text style={styles.totalValue}>{formatMoney(stats.total)}</Text>
+        
+        <View style={styles.statsRow}>
+            <StatItem icon="cart" label="Expenses" value={stats.expenses} color="#f59e0b" />
+            <View style={styles.divider} />
+            <StatItem icon="sync" label="Subs" value={stats.fixed} color="#3b82f6" />
+            <View style={styles.divider} />
+            <StatItem icon="home" label="Loans" value={stats.loans} color="#6366f1" />
         </View>
       </View>
 
@@ -83,19 +84,18 @@ export default function DashboardScreen() {
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Recent Expenses</Text>
         <TouchableOpacity onPress={() => router.push('/calendar')}>
-          <Text style={styles.linkText}>View All</Text>
+          <Text style={styles.linkText}>See All</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.list}>
-        {(!recentExpenses || recentExpenses.length === 0) && (
-          <Text style={styles.emptyText}>No recent expenses.</Text>
-        )}
-        {recentExpenses?.map((e) => (
+        {(!recentExpenses || recentExpenses.length === 0) ? (
+          <Text style={styles.emptyText}>No expenses yet.</Text>
+        ) : recentExpenses.map((e) => (
           <View key={e.id} style={styles.row}>
             <View style={styles.rowLeft}>
               <View style={styles.iconBg}>
-                <Ionicons name="pricetag-outline" size={18} color="#475569" />
+                <Ionicons name="pricetag" size={16} color={AppColors.text.secondary} />
               </View>
               <View>
                 <Text style={styles.rowTitle}>{e.category}</Text>
@@ -106,33 +106,46 @@ export default function DashboardScreen() {
           </View>
         ))}
       </View>
-
     </ScrollView>
   );
 }
 
+// Helper component for the stats row
+const StatItem = ({ icon, label, value, color }: any) => (
+    <View style={styles.statItem}>
+        <Ionicons name={icon} size={18} color={color} style={{marginBottom: 4}}/>
+        <Text style={styles.statValue}>${Math.round(value)}</Text>
+        <Text style={styles.statLabel}>{label}</Text>
+    </View>
+);
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc' },
-  contentContainer: { padding: 20, paddingTop: 60, paddingBottom: 100 },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
-  greeting: { fontSize: 28, fontWeight: '700', color: '#0f172a' },
-  date: { fontSize: 16, color: '#64748b' },
-  totalBadge: { alignItems: 'flex-end' },
-  totalLabel: { fontSize: 12, color: '#64748b', fontWeight: '600' },
-  totalValue: { fontSize: 24, fontWeight: '700', color: '#10b981' },
-  statsRow: { flexDirection: 'row', gap: 12, marginBottom: 32 },
-  statCard: { flex: 1, backgroundColor: '#fff', padding: 16, borderRadius: 16, alignItems: 'center', gap: 8, shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 8, elevation: 2 },
-  statValue: { fontSize: 18, fontWeight: '700', color: '#0f172a' },
-  statLabel: { fontSize: 12, color: '#64748b' },
+  container: { flex: 1, backgroundColor: AppColors.background },
+  content: { padding: 20, paddingTop: 60, paddingBottom: 100 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+  greeting: { fontSize: 28, fontWeight: '800', color: AppColors.primary, letterSpacing: -0.5 },
+  date: { fontSize: 15, color: AppColors.text.secondary, fontWeight: '500' },
+  profileBtn: { opacity: 0.8 },
+  
+  totalCard: { backgroundColor: AppColors.surface, borderRadius: 24, padding: 24, marginBottom: 32, shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: {width:0, height:4} },
+  totalLabel: { fontSize: 14, color: AppColors.text.secondary, fontWeight: '600', textAlign: 'center', marginBottom: 4 },
+  totalValue: { fontSize: 36, fontWeight: '800', color: AppColors.primary, textAlign: 'center', marginBottom: 24 },
+  statsRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  statItem: { alignItems: 'center', flex: 1 },
+  divider: { width: 1, backgroundColor: AppColors.border, height: '80%' },
+  statValue: { fontSize: 16, fontWeight: '700', color: AppColors.primary },
+  statLabel: { fontSize: 12, color: AppColors.text.secondary, marginTop: 2 },
+
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  sectionTitle: { fontSize: 18, fontWeight: '600', color: '#0f172a' },
-  linkText: { color: '#10b981', fontWeight: '600' },
-  list: { backgroundColor: '#fff', borderRadius: 16, padding: 8 },
-  emptyText: { padding: 20, textAlign: 'center', color: '#94a3b8' },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
-  rowLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  iconBg: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#f1f5f9', justifyContent: 'center', alignItems: 'center' },
-  rowTitle: { fontWeight: '600', color: '#0f172a' },
-  rowSubtitle: { fontSize: 12, color: '#64748b' },
-  rowAmount: { fontWeight: '600', color: '#0f172a' },
+  sectionTitle: { fontSize: 18, fontWeight: '700', color: AppColors.primary },
+  linkText: { color: AppColors.accent, fontWeight: '600' },
+  
+  list: { backgroundColor: AppColors.surface, borderRadius: 20, padding: 4, overflow: 'hidden' },
+  emptyText: { padding: 24, textAlign: 'center', color: AppColors.text.light },
+  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: AppColors.secondary },
+  rowLeft: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  iconBg: { width: 40, height: 40, borderRadius: 20, backgroundColor: AppColors.secondary, justifyContent: 'center', alignItems: 'center' },
+  rowTitle: { fontWeight: '600', color: AppColors.primary, fontSize: 15 },
+  rowSubtitle: { fontSize: 13, color: AppColors.text.secondary },
+  rowAmount: { fontWeight: '600', color: AppColors.primary, fontSize: 15 },
 });

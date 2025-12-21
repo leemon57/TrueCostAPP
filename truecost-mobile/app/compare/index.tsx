@@ -1,10 +1,12 @@
 ﻿import React, { useState } from "react";
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from "react-native";
 import { useLiveQuery } from "drizzle-orm/expo-sqlite";
-import { db } from "../../db/client";
-import { loanScenarios } from "../../db/schema";
-import { router } from "expo-router";
+import { db } from "@/db/client";
+import { loanScenarios } from "@/db/schema";
 import { Ionicons } from "@expo/vector-icons";
+import { AppColors } from "@/constants/Colors";
+import { ScreenHeader } from "@/components/ui/ThemeComponents";
+import { calculateLoan } from "@/utils/loanCalculator";
 
 export default function CompareScreen() {
   const { data: scenarios } = useLiveQuery(db.select().from(loanScenarios));
@@ -19,35 +21,10 @@ export default function CompareScreen() {
   };
 
   const selectedScenarios = scenarios?.filter(s => selectedIds.includes(s.id)) || [];
-  
-  // Calculate stats with payment frequency considered
-  const getStats = (s: typeof loanScenarios.$inferSelect) => {
-    const paymentsPerYear = s.paymentFrequency === "BIWEEKLY" ? 26 : s.paymentFrequency === "WEEKLY" ? 52 : 12;
-    const periods = (s.termMonths / 12) * paymentsPerYear;
-    if (!periods) return { payment: 0, total: 0, interest: 0, label: "Payment" };
-
-    const annualRate = s.fixedAnnualRate || 0;
-    const ratePerPeriod = annualRate / paymentsPerYear;
-    const principal = s.principal;
-
-    let payment = 0;
-    if (annualRate === 0) payment = principal / periods;
-    else payment = principal * (ratePerPeriod * Math.pow(1 + ratePerPeriod, periods)) / (Math.pow(1 + ratePerPeriod, periods) - 1);
-    
-    const total = payment * periods;
-    const label = s.paymentFrequency === "BIWEEKLY" ? "Bi-weekly" : s.paymentFrequency === "WEEKLY" ? "Weekly" : "Monthly";
-    return { payment, total, interest: total - s.principal, label };
-  };
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Ionicons name="close" size={24} color="#0f172a" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Compare Models</Text>
-        <View style={{width: 40}} />
-      </View>
+      <ScreenHeader title="Compare Models" showBack />
 
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.instruct}>Select 2 scenarios to compare:</Text>
@@ -64,51 +41,50 @@ export default function CompareScreen() {
               >
                 <View>
                   <Text style={[styles.itemName, isSelected && styles.textSelected]}>{s.name}</Text>
-                  <Text style={[styles.itemSub, isSelected && styles.textSelected]}>{`$${s.principal} / ${s.termMonths}mo / ${s.paymentFrequency.toLowerCase()}`}</Text>
+                  <Text style={[styles.itemSub, isSelected && styles.textSelected]}>
+                    ${s.principal} / {s.termMonths}mo
+                  </Text>
                 </View>
-                {isSelected && <Ionicons name="checkmark-circle" size={24} color="#10b981" />}
+                {isSelected && <Ionicons name="checkmark-circle" size={24} color={AppColors.accent} />}
               </TouchableOpacity>
             )
           })}
         </View>
 
-        {/* Comparison View */}
+        {/* Head-to-Head View */}
         {selectedScenarios.length === 2 && (
           <View style={styles.result}>
             <Text style={styles.resultTitle}>Head to Head</Text>
             
             <View style={styles.table}>
-              <View style={styles.col}>
-                <Text style={styles.colHeader}>{selectedScenarios[0].name}</Text>
-                {(() => {
-                  const s1 = getStats(selectedScenarios[0]);
-                  return (
-                    <>
-                      <Text style={styles.statLabel}>Payment ({s1.label.toLowerCase()})</Text>
-                      <Text style={styles.statValue}>${s1.payment.toFixed(2)}</Text>
-                      <Text style={styles.statLabel}>Interest</Text>
-                      <Text style={styles.statValue}>${s1.interest.toFixed(0)}</Text>
-                    </>
-                  )
-                })()}
-              </View>
+              {selectedScenarios.map((s, index) => {
+                // USING SHARED MATH UTILITY
+                const stats = calculateLoan({
+                    principal: s.principal,
+                    months: s.termMonths,
+                    rate: s.fixedAnnualRate || 0.05,
+                    frequency: s.paymentFrequency
+                });
+                
+                return (
+                  <React.Fragment key={s.id}>
+                    <View style={styles.col}>
+                      <Text style={styles.colHeader}>{s.name}</Text>
+                      
+                      <Text style={styles.statLabel}>Payment ({s.paymentFrequency.toLowerCase()})</Text>
+                      <Text style={styles.statValue}>${stats.payment.toFixed(2)}</Text>
+                      
+                      <Text style={styles.statLabel}>Total Interest</Text>
+                      <Text style={styles.statValue}>${stats.totalInterest.toFixed(0)}</Text>
 
-              <View style={styles.divider} />
-
-              <View style={styles.col}>
-                <Text style={styles.colHeader}>{selectedScenarios[1].name}</Text>
-                {(() => {
-                  const s2 = getStats(selectedScenarios[1]);
-                  return (
-                    <>
-                      <Text style={styles.statLabel}>Payment ({s2.label.toLowerCase()})</Text>
-                      <Text style={styles.statValue}>${s2.payment.toFixed(2)}</Text>
-                      <Text style={styles.statLabel}>Interest</Text>
-                      <Text style={styles.statValue}>${s2.interest.toFixed(0)}</Text>
-                    </>
-                  )
-                })()}
-              </View>
+                      <Text style={styles.statLabel}>True Cost</Text>
+                      <Text style={styles.statValue}>${stats.totalPaid.toFixed(0)}</Text>
+                    </View>
+                    {/* Add divider only between columns */}
+                    {index === 0 && <View style={styles.divider} />}
+                  </React.Fragment>
+                );
+              })}
             </View>
           </View>
         )}
@@ -118,28 +94,24 @@ export default function CompareScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f8fafc" },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 16, paddingTop: 60, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#e2e8f0" },
-  backBtn: { padding: 8 },
-  headerTitle: { fontSize: 16, fontWeight: "700" },
-  
+  container: { flex: 1, backgroundColor: AppColors.background },
   scroll: { padding: 20 },
-  instruct: { fontSize: 14, color: "#64748b", marginBottom: 12 },
+  instruct: { fontSize: 14, color: AppColors.text.secondary, marginBottom: 12 },
   
   list: { gap: 8, marginBottom: 24 },
-  item: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 16, backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#e2e8f0" },
-  itemSelected: { borderColor: "#10b981", backgroundColor: "#ecfdf5" },
-  itemName: { fontSize: 16, fontWeight: "600", color: "#0f172a" },
-  itemSub: { fontSize: 12, color: "#64748b" },
-  textSelected: { color: "#065f46" },
+  item: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 16, backgroundColor: AppColors.surface, borderRadius: 12, borderWidth: 1, borderColor: AppColors.border },
+  itemSelected: { borderColor: AppColors.accent, backgroundColor: '#ecfdf5' }, // Keeping a subtle green tint for selection
+  itemName: { fontSize: 16, fontWeight: "600", color: AppColors.text.primary },
+  itemSub: { fontSize: 12, color: AppColors.text.secondary },
+  textSelected: { color: AppColors.accent },
 
-  result: { backgroundColor: "#0f172a", borderRadius: 16, padding: 20 },
-  resultTitle: { color: "#94a3b8", fontSize: 12, fontWeight: "700", textTransform: "uppercase", marginBottom: 16, textAlign: "center" },
+  result: { backgroundColor: AppColors.primary, borderRadius: 20, padding: 20 },
+  resultTitle: { color: AppColors.text.secondary, fontSize: 12, fontWeight: "700", textTransform: "uppercase", marginBottom: 20, textAlign: "center" },
   table: { flexDirection: "row" },
   col: { flex: 1, alignItems: "center" },
-  divider: { width: 1, backgroundColor: "rgba(255,255,255,0.2)", marginHorizontal: 10 },
+  divider: { width: 1, backgroundColor: "rgba(255,255,255,0.1)", marginHorizontal: 10 },
   
-  colHeader: { color: "#fff", fontWeight: "700", fontSize: 14, marginBottom: 12, textAlign: "center" },
-  statLabel: { color: "#64748b", fontSize: 10, textTransform: "uppercase", marginTop: 8 },
-  statValue: { color: "#10b981", fontSize: 18, fontWeight: "700" },
+  colHeader: { color: "#fff", fontWeight: "700", fontSize: 15, marginBottom: 16, textAlign: "center" },
+  statLabel: { color: AppColors.text.secondary, fontSize: 10, textTransform: "uppercase", marginTop: 12 },
+  statValue: { color: AppColors.accent, fontSize: 18, fontWeight: "700" },
 });

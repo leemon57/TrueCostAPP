@@ -4,9 +4,9 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { db } from '@/db/client';
 import { expenses, budgetProfiles, loanScenarios, subscriptions } from '@/db/schema';
+import { AppColors } from '@/constants/Colors';
 
 export default function SettingsScreen() {
-  
   const handleClearData = () => {
     Alert.alert("Reset App", "This will delete all data. Are you sure?", [
       { text: "Cancel", style: "cancel" },
@@ -20,45 +20,41 @@ export default function SettingsScreen() {
     ]);
   };
 
+  const SettingsItem = ({ icon, label, onPress, danger }: any) => (
+    <TouchableOpacity style={styles.row} onPress={onPress}>
+      <View style={styles.rowLeft}>
+        <View style={[styles.iconBox, danger && styles.iconBoxDanger]}>
+           <Ionicons name={icon} size={20} color={danger ? AppColors.danger : AppColors.text.primary} />
+        </View>
+        <Text style={[styles.rowLabel, danger && { color: AppColors.danger }]}>{label}</Text>
+      </View>
+      {!danger && <Ionicons name="chevron-forward" size={20} color={AppColors.text.light} />}
+    </TouchableOpacity>
+  );
+
   return (
     <View style={styles.container}>
       <Text style={styles.header}>Settings</Text>
 
       <View style={styles.section}>
-        <TouchableOpacity style={styles.row} onPress={() => router.push('/settings')}>
-          <View style={styles.rowLeft}>
-            <Ionicons name="person-outline" size={22} color="#0f172a" />
-            <Text style={styles.rowLabel}>Edit Profile & Income</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color="#cbd5e1" />
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.row} onPress={() => router.push('/subscriptions')}>
-          <View style={styles.rowLeft}>
-            <Ionicons name="sync-outline" size={22} color="#0f172a" />
-            <Text style={styles.rowLabel}>Manage Subscriptions</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color="#cbd5e1" />
-        </TouchableOpacity>
+        <SettingsItem icon="person-outline" label="Edit Profile & Income" onPress={() => router.push('/onboarding')} />
+        {/* 'Manage Subscriptions' removed to avoid redundancy */}
       </View>
 
       <View style={styles.section}>
-        <TouchableOpacity style={styles.row} onPress={handleClearData}>
-          <View style={styles.rowLeft}>
-            <Ionicons name="trash-outline" size={22} color="#ef4444" />
-            <Text style={[styles.rowLabel, { color: '#ef4444' }]}>Clear All Data</Text>
-          </View>
-        </TouchableOpacity>
+        <SettingsItem icon="trash-outline" label="Clear All Data" onPress={handleClearData} danger />
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc', paddingTop: 60, padding: 20 },
-  header: { fontSize: 28, fontWeight: '700', marginBottom: 24, color: '#0f172a' },
-  section: { backgroundColor: '#fff', borderRadius: 16, padding: 8, marginBottom: 20 },
+  container: { flex: 1, backgroundColor: AppColors.background, paddingTop: 60, padding: 20 },
+  header: { fontSize: 32, fontWeight: '800', marginBottom: 24, color: AppColors.text.primary },
+  section: { backgroundColor: AppColors.surface, borderRadius: 20, marginBottom: 24, overflow: 'hidden' },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16 },
-  rowLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  rowLabel: { fontSize: 16, fontWeight: '500', color: '#334155' },
+  rowLeft: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  iconBox: { width: 36, height: 36, borderRadius: 10, backgroundColor: AppColors.secondary, justifyContent: 'center', alignItems: 'center' },
+  iconBoxDanger: { backgroundColor: '#fee2e2' },
+  rowLabel: { fontSize: 16, fontWeight: '600', color: AppColors.text.primary },
 });

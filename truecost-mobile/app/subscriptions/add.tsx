@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
 import { db } from '@/db/client';
 import { subscriptions } from '@/db/schema';
-import { Ionicons } from '@expo/vector-icons';
+import { AppColors } from '@/constants/Colors';
+import { ScreenHeader, AppInput, AppButton } from '@/components/ui/ThemeComponents';
 
 export default function AddSubscriptionScreen() {
   const [name, setName] = useState('');
@@ -23,20 +24,26 @@ export default function AddSubscriptionScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Add Subscription</Text>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="close" size={24} />
-        </TouchableOpacity>
-      </View>
+      <ScreenHeader title="Add Subscription" />
 
-      <View style={styles.form}>
-        <Text style={styles.label}>Service Name</Text>
-        <TextInput style={styles.input} placeholder="Netflix, Spotify..." value={name} onChangeText={setName} />
+      <View style={styles.content}>
+        <AppInput 
+          label="Service Name" 
+          placeholder="Netflix, Spotify..." 
+          value={name} 
+          onChangeText={setName} 
+          autoFocus
+        />
+        
+        <AppInput 
+          label="Amount" 
+          placeholder="0.00" 
+          keyboardType="decimal-pad" 
+          value={amount} 
+          onChangeText={setAmount} 
+        />
 
-        <Text style={styles.label}>Amount</Text>
-        <TextInput style={styles.input} placeholder="0.00" keyboardType="numeric" value={amount} onChangeText={setAmount} />
-
+        <Text style={styles.label}>Billing Cycle</Text>
         <View style={styles.cycleRow}>
             {['MONTHLY', 'YEARLY'].map(c => (
                 <TouchableOpacity 
@@ -49,26 +56,21 @@ export default function AddSubscriptionScreen() {
             ))}
         </View>
 
-        <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
-          <Text style={styles.saveBtnText}>Save Subscription</Text>
-        </TouchableOpacity>
+        <View style={{ marginTop: 24 }}>
+          <AppButton title="Save Subscription" onPress={handleSave} disabled={!name || !amount} />
+        </View>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff', padding: 24, paddingTop: 60 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 32 },
-  title: { fontSize: 20, fontWeight: '700' },
-  form: { gap: 16 },
-  label: { fontWeight: '600', color: '#64748b' },
-  input: { backgroundColor: '#f8fafc', padding: 16, borderRadius: 12, fontSize: 16 },
-  cycleRow: { flexDirection: 'row', gap: 12, marginTop: 8 },
-  chip: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20, backgroundColor: '#f1f5f9' },
-  activeChip: { backgroundColor: '#0f172a' },
-  chipText: { fontWeight: '600', color: '#64748b' },
-  activeChipText: { color: '#fff' },
-  saveBtn: { backgroundColor: '#10b981', padding: 18, borderRadius: 16, alignItems: 'center', marginTop: 24 },
-  saveBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  container: { flex: 1, backgroundColor: AppColors.surface },
+  content: { padding: 24 },
+  label: { fontSize: 14, fontWeight: '600', color: AppColors.text.secondary, marginBottom: 12 },
+  cycleRow: { flexDirection: 'row', gap: 12, marginBottom: 8 },
+  chip: { paddingHorizontal: 20, paddingVertical: 12, borderRadius: 20, backgroundColor: AppColors.secondary },
+  activeChip: { backgroundColor: AppColors.primary },
+  chipText: { fontWeight: '600', color: AppColors.text.secondary, fontSize: 13 },
+  activeChipText: { color: AppColors.text.inverse },
 });

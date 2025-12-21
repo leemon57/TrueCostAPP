@@ -4,21 +4,22 @@ import { Platform, View, TouchableOpacity, StyleSheet } from 'react-native';
 import { HapticTab } from '@/components/haptic-tab';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AppColors } from '@/constants/Colors'; // Import centralized colors
 
 export default function TabLayout() {
-  const activeColor = '#10b981';
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: activeColor,
+        tabBarActiveTintColor: AppColors.accent,
+        tabBarInactiveTintColor: AppColors.text.secondary,
         headerShown: false,
         tabBarButton: HapticTab,
         tabBarStyle: Platform.select({
-          ios: { position: 'absolute', height: 60 + insets.bottom, paddingTop: 8 },
-          default: { height: 60, paddingBottom: 10 },
+          ios: { position: 'absolute', height: 60 + insets.bottom, paddingTop: 8, backgroundColor: AppColors.surface, borderTopColor: AppColors.border },
+          default: { height: 60, paddingBottom: 10, backgroundColor: AppColors.surface, borderTopColor: AppColors.border },
         }),
       }}>
       <Tabs.Screen
@@ -36,7 +37,7 @@ export default function TabLayout() {
         }}
       />
       
-      {/* Empty slot for FAB */}
+      {/* Floating Action Button (FAB) */}
       <Tabs.Screen
         name="add_placeholder"
         options={{
@@ -47,15 +48,13 @@ export default function TabLayout() {
                 style={styles.fab}
                 onPress={() => router.push('/expenses/add')}
               >
-                <Ionicons name="add" size={32} color="#fff" />
+                <Ionicons name="add" size={32} color={AppColors.text.inverse} />
               </TouchableOpacity>
             </View>
           ),
         }}
         listeners={{
-          tabPress: (e) => {
-            e.preventDefault(); // Prevent tab navigation
-          },
+          tabPress: (e) => e.preventDefault(),
         }}
       />
 
@@ -96,7 +95,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#0f172a',
+    backgroundColor: AppColors.primary, // Using centralized primary color
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
