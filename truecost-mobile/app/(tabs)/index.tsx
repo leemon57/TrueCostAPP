@@ -8,7 +8,8 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { format } from "date-fns";
 import { AppColors } from "@/constants/Colors";
-import AiTipsCard from "@/components/AiTipsCard"; // Restored Import
+import AiTipsCard from "@/components/AiTipsCard";
+import { calculateLoan } from "@/utils/loanCalculator"; 
 
 export default function DashboardScreen() {
   const { data: recentExpenses } = useLiveQuery(
@@ -17,22 +18,33 @@ export default function DashboardScreen() {
   const { data: allScenarios } = useLiveQuery(db.select().from(loanScenarios));
   const { data: allSubs } = useLiveQuery(db.select().from(subscriptions));
 
-  // Placeholder AI Data
+  // Placeholder AI Data (Connect to real logic in services/gemini.ts later)
   const [aiTips] = useState<string[]>([
     "Your food spending is 15% lower than last week. Great job!",
     "You have a recurring subscription for 'Netflix' coming up on Friday."
   ]);
 
   const stats = useMemo(() => {
+    // 1. Expenses (Current Month Approximation for demo)
     const monthExpenses = recentExpenses?.reduce((acc, e) => acc + e.amount, 0) || 0;
     
+    // 2. Subs (Monthly)
     const monthlySubs = allSubs?.reduce((acc, s) => {
       return s.isActive ? acc + (s.billingCycle === 'MONTHLY' ? s.amount : s.amount / 12) : acc;
     }, 0) || 0;
 
+    // 3. Loans (Monthly)
     const monthlyLoans = allScenarios?.reduce((acc, s) => {
-        const approxPmt = (s.principal * (1 + (s.fixedAnnualRate || 0.05))) / (s.termMonths || 60);
-        return acc + approxPmt; 
+        // Use shared utility for consistency
+        const loanStats = calculateLoan({
+          principal: s.principal,
+          months: s.termMonths,
+          rate: s.fixedAnnualRate || 0.05,
+          frequency: s.paymentFrequency
+        });
+        // Normalize to monthly cost for the dashboard overview
+        const annualCost = loanStats.payment * (s.paymentFrequency === 'BIWEEKLY' ? 26 : s.paymentFrequency === 'WEEKLY' ? 52 : 12);
+        return acc + (annualCost / 12);
     }, 0) || 0;
 
     return {
@@ -55,14 +67,26 @@ export default function DashboardScreen() {
           <Text style={styles.greeting}>Overview</Text>
           <Text style={styles.date}>{format(new Date(), 'MMMM yyyy')}</Text>
         </View>
-        <TouchableOpacity onPress={() => router.push('/settings')}>
-          <Ionicons name="person-circle-outline" size={32} color={AppColors.primary} />
-        </TouchableOpacity>
+        
+        <View style={{ flexDirection: 'row', gap: 12 }}>
+            {/* Quick Calculator Button */}
+            <TouchableOpacity 
+                style={styles.iconBtn} 
+                onPress={() => router.push('/scenarios/calculator')}
+            >
+                <Ionicons name="calculator-outline" size={24} color={AppColors.text.primary} />
+            </TouchableOpacity>
+
+            {/* Profile/Settings Button */}
+            <TouchableOpacity onPress={() => router.push('/settings')}>
+                <Ionicons name="person-circle-outline" size={32} color={AppColors.primary} />
+            </TouchableOpacity>
+        </View>
       </View>
 
       {/* Main Total */}
       <View style={styles.totalBadge}>
-        <Text style={styles.totalLabel}>Total Spend</Text>
+        <Text style={styles.totalLabel}>Total Monthly Spend</Text>
         <Text style={styles.totalValue}>{formatMoney(stats.total)}</Text>
       </View>
 
@@ -93,7 +117,7 @@ export default function DashboardScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* RESTORED: AI Tips Card */}
+      {/* AI Tips Card */}
       <View style={{ marginBottom: 24 }}>
         <AiTipsCard tips={aiTips} />
       </View>
@@ -137,6 +161,17 @@ const styles = StyleSheet.create({
   greeting: { fontSize: 28, fontWeight: '700', color: AppColors.text.primary },
   date: { fontSize: 16, color: AppColors.text.secondary },
   
+  iconBtn: {
+    width: 40, 
+    height: 40, 
+    borderRadius: 20, 
+    backgroundColor: AppColors.surface, 
+    alignItems: 'center', 
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: AppColors.border
+  },
+
   totalBadge: { alignItems: 'center', marginBottom: 24, backgroundColor: AppColors.surface, padding: 16, borderRadius: 16 },
   totalLabel: { fontSize: 12, color: AppColors.text.secondary, fontWeight: '600', textTransform: 'uppercase' },
   totalValue: { fontSize: 32, fontWeight: '800', color: AppColors.text.primary },
