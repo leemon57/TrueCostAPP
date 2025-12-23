@@ -9,7 +9,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { format } from "date-fns";
 import { AppColors } from "@/constants/Colors";
 import AiTipsCard from "@/components/AiTipsCard";
-import { calculateLoan } from "@/utils/loanCalculator"; 
+import { calculateLoan, PAYMENTS_PER_YEAR } from "@/utils/loanCalculator";
+
+const DEFAULT_ANNUAL_RATE = 0.05;
 
 export default function DashboardScreen() {
   const { data: recentExpenses } = useLiveQuery(
@@ -35,16 +37,21 @@ export default function DashboardScreen() {
 
     // 3. Loans (Monthly)
     const monthlyLoans = allScenarios?.reduce((acc, s) => {
+        const frequency = (s.paymentFrequency || 'MONTHLY').toUpperCase();
+        const paymentsPerYear =
+          PAYMENTS_PER_YEAR[frequency as keyof typeof PAYMENTS_PER_YEAR] ?? PAYMENTS_PER_YEAR.MONTHLY;
+
         // Use shared utility for consistency
         const loanStats = calculateLoan({
           principal: s.principal,
           months: s.termMonths,
-          rate: s.fixedAnnualRate || 0.05,
-          frequency: s.paymentFrequency
+          rate: s.fixedAnnualRate ?? DEFAULT_ANNUAL_RATE,
+          frequency
         });
-        // Normalize to monthly cost for the dashboard overview
-        const annualCost = loanStats.payment * (s.paymentFrequency === 'BIWEEKLY' ? 26 : s.paymentFrequency === 'WEEKLY' ? 52 : 12);
-        return acc + (annualCost / 12);
+
+        // Normalize to an average monthly cash outlay (frequency-aware)
+        const normalizedMonthly = loanStats.payment * (paymentsPerYear / 12);
+        return acc + normalizedMonthly;
     }, 0) || 0;
 
     return {
@@ -72,7 +79,7 @@ export default function DashboardScreen() {
             {/* Quick Calculator Button */}
             <TouchableOpacity 
                 style={styles.iconBtn} 
-                onPress={() => router.push('/scenarios/calculator')}
+                onPress={() => router.push('/scenarios/add')}
             >
                 <Ionicons name="calculator-outline" size={24} color={AppColors.text.primary} />
             </TouchableOpacity>

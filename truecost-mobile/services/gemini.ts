@@ -1,14 +1,15 @@
-// fetchAiInsights.openai.ts
-// Expo client-side OpenAI call using the Responses API + Structured Outputs (JSON Schema)
-// Note: EXPO_PUBLIC_* keys are embedded in the app bundle. Use a backend proxy for production.
+// fetchAiInsights.ts
+// Expo client-side call to an AI proxy. Secrets (OpenAI key) must live on the backend/edge.
+// The proxy should call OpenAI Responses API with structured outputs. Avoid embedding secrets in the app bundle.
 
 export type AiInsights = {
   tips: string[];
   forecast: string;
 };
 
-const OPENAI_MODEL = process.env.EXPO_PUBLIC_OPENAI_MODEL || "gpt-5-nano";
-const OPENAI_URL = "https://api.openai.com/v1/responses";
+const MAX_SCENARIOS = 5;
+const OPENAI_MODEL = process.env.EXPO_PUBLIC_OPENAI_MODEL || "gpt-4o-mini";
+const AI_PROXY_BASE_URL = (process.env.EXPO_PUBLIC_API_BASE_URL || "").replace(/\/$/, "");
 
 function summarizeScenarios(scenarios: any[]): string {
   if (!Array.isArray(scenarios) || scenarios.length === 0) return "No scenarios saved.";
@@ -76,107 +77,115 @@ function extractOutputText(resJson: any): string | null {
 }
 
 export async function fetchAiInsights(scenarios: any[]): Promise<AiInsights> {
-  // WARNING: In Expo, EXPO_PUBLIC_* is embedded into the client bundle (not secure for production).
-  const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
-
-  if (!apiKey) {
-    return formatFallback("Set EXPO_PUBLIC_OPENAI_API_KEY in your .env file.");
+  // Enforce proxy usage so secrets stay server-side.
+  if (!AI_PROXY_BASE_URL) {
+    return formatFallback("Set EXPO_PUBLIC_API_BASE_URL to your AI proxy.");
   }
 
-  const scenarioSummary = summarizeScenarios(scenarios);
+  const trimmedScenarios = Array.isArray(scenarios) ? scenarios.slice(0, MAX_SCENARIOS) : [];
+  const scenarioSummary = summarizeScenarios(trimmedScenarios);
 
   const body = {
     model: OPENAI_MODEL,
-    input: [
-      {
-        role: "system",
-        content: [
-          {
-            type: "input_text",
-            text:
-              "You are a personal finance assistant. Provide concise, consumer-focused advice. " +
-              "Do not include disclaimers. Use plain language. Keep it short.",
-          },
-        ],
-      },
-      {
-        role: "user",
-        content: [
-          {
-            type: "input_text",
-            text:
-              "Analyze these loan scenarios.\n\n" +
-              "Return ONLY valid JSON that matches the required schema.\n\n" +
-              `Scenarios: ${scenarioSummary}`,
-          },
-        ],
-      },
-    ],
-
-    // NEW API LOCATION FOR STRUCTURED OUTPUTS:
-    // response_format moved to text.format
-    text: {
-      format: {
-        type: "json_schema",
-        name: "ai_insights",
-        strict: true,
-        schema: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            tips: {
-              type: "array",
-              minItems: 2,
-              maxItems: 2,
-              items: { type: "string" },
-              description: "Two short actionable tips (<= 30 words each).",
-            },
-            forecast: {
-              type: "string",
-              description: "One short sentence about near-term consumer interest-rate outlook.",
-            },
-          },
-          required: ["tips", "forecast"],
-        },
-      },
-    },
+    scenarios: trimmedScenarios,
+    summary: scenarioSummary,
   };
 
   try {
-    const res = await fetch(OPENAI_URL, {
+    const res = await fetch(`${AI_PROXY_BASE_URL}/ai/insights`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify(body),
     });
 
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
-      console.warn("OpenAI request failed:", res.status, errText);
-      return formatFallback(`OpenAI API Error: ${res.status}`);
+      console.warn("AI proxy request failed:", res.status, errText);
+      return formatFallback(`AI proxy error: ${res.status}`);
     }
 
     const resJson = await res.json();
-    const outText = extractOutputText(resJson);
+    const directInsights = coerceAiInsights(resJson);
+    if (directInsights) return directInsights;
 
+    // If the proxy forwards raw OpenAI Responses payload, attempt to parse it.
+    const outText = extractOutputText(resJson);
     if (!outText) {
-      return formatFallback("OpenAI returned no output text.");
+      return formatFallback("AI proxy returned no structured output.");
     }
 
-    // With json_schema formatting, the output text should be JSON.
     try {
       const parsed = JSON.parse(outText);
       const insights = coerceAiInsights(parsed);
-      if (!insights) return formatFallback("OpenAI returned unexpected JSON structure.");
+      if (!insights) return formatFallback("AI proxy returned unexpected JSON structure.");
       return insights;
     } catch (e) {
-      console.warn("Failed to parse JSON:", e, outText);
-      return formatFallback("OpenAI output was not valid JSON.");
+      console.warn("Failed to parse AI proxy JSON:", e, outText);
+      return formatFallback("AI output was not valid JSON.");
     }
   } catch (error: any) {
-    console.warn("OpenAI request exception:", error?.message ?? error);
+    console.warn("AI proxy request exception:", error?.message ?? error);
     return formatFallback("Could not connect to AI service.");
   }
 }
+
+/* Legacy body shape reference for the backend proxy:
+   The proxy should POST this to OpenAI Responses API with the provided model and a secret API key.
+   Keeping here for server implementation reference.
+const openAiPayload = {
+  model: OPENAI_MODEL,
+  input: [
+    {
+      role: "system",
+      content: [
+        {
+          type: "input_text",
+          text:
+            "You are a personal finance assistant. Provide concise, consumer-focused advice. " +
+            "Do not include disclaimers. Use plain language. Keep it short.",
+        },
+      ],
+    },
+    {
+      role: "user",
+      content: [
+        {
+          type: "input_text",
+          text:
+            "Analyze these loan scenarios.\n\n" +
+            "Return ONLY valid JSON that matches the required schema.\n\n" +
+            `Scenarios: ${scenarioSummary}`,
+        },
+      ],
+    },
+  ],
+
+  text: {
+    format: {
+      type: "json_schema",
+      name: "ai_insights",
+      strict: true,
+      schema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          tips: {
+            type: "array",
+            minItems: 2,
+            maxItems: 2,
+            items: { type: "string" },
+            description: "Two short actionable tips (<= 30 words each).",
+          },
+          forecast: {
+            type: "string",
+            description: "One short sentence about near-term consumer interest-rate outlook.",
+          },
+        },
+        required: ["tips", "forecast"],
+      },
+    },
+  },
+};
+*/

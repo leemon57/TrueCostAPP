@@ -7,22 +7,34 @@ interface LoanInput {
   frequency: string; // "MONTHLY" | "BIWEEKLY" | "WEEKLY"
 }
 
+export const PAYMENTS_PER_YEAR: Record<Frequency, number> = {
+  MONTHLY: 12,
+  BIWEEKLY: 26,
+  WEEKLY: 52,
+};
+
+const normalizeFrequency = (freq: string | undefined): Frequency => {
+  const upper = (freq || '').toUpperCase() as Frequency;
+  return upper === 'BIWEEKLY' || upper === 'WEEKLY' ? upper : 'MONTHLY';
+};
+
 export function calculateLoan({ principal, months, rate, frequency }: LoanInput) {
-  if (!principal || !months) return { payment: 0, totalInterest: 0, totalPaid: 0 };
-
-  const paymentsPerYear = frequency === 'BIWEEKLY' ? 26 : frequency === 'WEEKLY' ? 52 : 12;
-  const n_periods = (months / 12) * paymentsPerYear;
-  const r_period = rate / paymentsPerYear;
-
-  let payment = 0;
-  
-  if (rate === 0) {
-    payment = principal / n_periods;
-  } else {
-    payment = principal * (r_period * Math.pow(1 + r_period, n_periods)) / (Math.pow(1 + r_period, n_periods) - 1);
+  if (!principal || !months) {
+    return { payment: 0, totalInterest: 0, totalPaid: 0, ratio: 0 };
   }
 
-  const totalPaid = payment * n_periods;
+  const freq = normalizeFrequency(frequency);
+  const paymentsPerYear = PAYMENTS_PER_YEAR[freq];
+  const periods = Math.max(1, Math.round((months / 12) * paymentsPerYear));
+  const periodRate = rate > 0 ? Math.pow(1 + rate, 1 / paymentsPerYear) - 1 : 0;
+
+  const payment =
+    periodRate === 0
+      ? principal / periods
+      : (principal * periodRate * Math.pow(1 + periodRate, periods)) /
+        (Math.pow(1 + periodRate, periods) - 1);
+
+  const totalPaid = payment * periods;
   const totalInterest = totalPaid - principal;
 
   return {
@@ -30,6 +42,6 @@ export function calculateLoan({ principal, months, rate, frequency }: LoanInput)
     totalPaid,
     totalInterest,
     // Useful for UI scaling
-    ratio: principal > 0 ? (totalInterest / principal) * 100 : 0
+    ratio: principal > 0 ? (totalInterest / principal) * 100 : 0,
   };
 }

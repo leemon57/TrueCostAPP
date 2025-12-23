@@ -7,7 +7,6 @@ import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { initializeDb } from '../db/init';
-import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { db } from '@/db/client';
 import { budgetProfiles } from '@/db/schema';
 
@@ -16,11 +15,9 @@ SplashScreen.preventAutoHideAsync();
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const [dbReady, setDbReady] = useState(false);
+  const [hasProfile, setHasProfile] = useState<boolean | null>(null);
   const segments = useSegments();
   const router = useRouter();
-
-  // Check if profile exists to handle redirection (simple auth check)
-  const { data: profiles } = useLiveQuery(db.select().from(budgetProfiles));
 
   useEffect(() => {
     const prepare = async () => {
@@ -36,11 +33,23 @@ export default function RootLayout() {
     prepare();
   }, []);
 
+  // One-time (and route-change) profile check to avoid live re-render loops
   useEffect(() => {
-    if (!dbReady || !profiles) return;
+    if (!dbReady) return;
+    try {
+      const rows = db.select().from(budgetProfiles).limit(1).all();
+      setHasProfile(rows.length > 0);
+    } catch (e) {
+      console.warn('Profile lookup failed', e);
+      setHasProfile(false);
+    }
+  }, [dbReady, segments]);
 
-    const inAuthGroup = segments[0] === '(auth)';
-    const hasProfile = profiles.length > 0;
+  useEffect(() => {
+    if (!dbReady || hasProfile === null) return;
+
+    const rootSegment = segments[0];
+    const inAuthGroup = rootSegment === '(auth)';
 
     if (!hasProfile && !inAuthGroup) {
       // Redirect to onboarding if no profile exists
@@ -49,7 +58,7 @@ export default function RootLayout() {
       // Redirect to home if profile exists
       router.replace('/(tabs)');
     }
-  }, [dbReady, profiles, segments]);
+  }, [dbReady, hasProfile, segments, router]);
 
   if (!dbReady) return null;
 

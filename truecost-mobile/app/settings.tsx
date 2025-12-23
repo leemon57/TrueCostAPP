@@ -1,5 +1,5 @@
 // app/settings.tsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -18,7 +18,10 @@ import { Ionicons } from '@expo/vector-icons';
 export default function SettingsScreen() {
   const [profileId, setProfileId] = useState<string | null>(null);
   const [form, setForm] = useState({
-    monthlyIncome: '',
+    incomeType: 'SALARY' as 'SALARY' | 'HOURLY',
+    salaryAmount: '',
+    hourlyRate: '',
+    hoursPerWeek: '',
     fixedExpenses: '',
     variableExpenses: '',
     savingsTarget: '',
@@ -34,11 +37,14 @@ export default function SettingsScreen() {
           const p = profiles[0];
           setProfileId(p.id);
           setForm({
-            monthlyIncome: p.monthlyIncome.toString(),
-            fixedExpenses: p.fixedExpenses.toString(),
-            variableExpenses: p.variableExpenses.toString(),
+            incomeType: (p.incomeType as 'SALARY' | 'HOURLY') || 'SALARY',
+            salaryAmount: (p.salaryAmount ?? '').toString(),
+            hourlyRate: (p.hourlyRate ?? '').toString(),
+            hoursPerWeek: (p.hoursPerWeek ?? '').toString(),
+            fixedExpenses: (p.fixedExpenses ?? 0).toString(),
+            variableExpenses: (p.variableExpenses ?? 0).toString(),
             savingsTarget: (p.savingsPerMonthTarget || 0).toString(),
-            emergencyFund: p.emergencyFund.toString(),
+            emergencyFund: (p.emergencyFund ?? 0).toString(),
           });
         }
       } catch (e) {
@@ -48,13 +54,27 @@ export default function SettingsScreen() {
     loadProfile();
   }, []);
 
+  const monthlyIncomeDerived = useMemo(() => {
+    const salary = parseFloat(form.salaryAmount) || 0;
+    const hourly = parseFloat(form.hourlyRate) || 0;
+    const hours = parseFloat(form.hoursPerWeek) || 0;
+
+    if (form.incomeType === 'SALARY') return salary / 12;
+    if (form.incomeType === 'HOURLY') return (hourly * hours * 52) / 12;
+    return 0;
+  }, [form]);
+
   const handleUpdate = async () => {
     if (!profileId) return;
 
     try {
       await db.update(budgetProfiles)
         .set({
-          monthlyIncome: parseFloat(form.monthlyIncome) || 0,
+          incomeType: form.incomeType,
+          salaryAmount: parseFloat(form.salaryAmount) || 0,
+          hourlyRate: parseFloat(form.hourlyRate) || 0,
+          hoursPerWeek: parseFloat(form.hoursPerWeek) || 0,
+          monthlyIncome: monthlyIncomeDerived,
           fixedExpenses: parseFloat(form.fixedExpenses) || 0,
           variableExpenses: parseFloat(form.variableExpenses) || 0,
           savingsPerMonthTarget: parseFloat(form.savingsTarget) || 0,
@@ -79,15 +99,62 @@ export default function SettingsScreen() {
       </View>
 
       <View style={styles.form}>
-        <Text style={styles.sectionTitle}>Budget Parameters</Text>
-        
-        <Text style={styles.label}>Monthly Net Income ($)</Text>
-        <TextInput
-          style={styles.input}
-          keyboardType="numeric"
-          value={form.monthlyIncome}
-          onChangeText={(t) => setForm({ ...form, monthlyIncome: t })}
-        />
+        <Text style={styles.sectionTitle}>Income</Text>
+
+        <View style={styles.toggleRow}>
+          {(['SALARY', 'HOURLY'] as const).map((type) => (
+            <TouchableOpacity
+              key={type}
+              style={[styles.toggleBtn, form.incomeType === type && styles.toggleBtnActive]}
+              onPress={() => setForm({ ...form, incomeType: type })}
+            >
+              <Text style={[styles.toggleText, form.incomeType === type && styles.toggleTextActive]}>
+                {type === 'SALARY' ? 'Salary' : 'Hourly'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {form.incomeType === 'SALARY' ? (
+          <View>
+            <Text style={styles.label}>Annual Salary ($)</Text>
+            <TextInput
+              style={styles.input}
+              keyboardType="numeric"
+              value={form.salaryAmount}
+              onChangeText={(t) => setForm({ ...form, salaryAmount: t })}
+              placeholder="e.g., 80000"
+            />
+          </View>
+        ) : (
+          <View style={{ gap: 12 }}>
+            <View>
+              <Text style={styles.label}>Hourly Rate ($)</Text>
+              <TextInput
+                style={styles.input}
+                keyboardType="numeric"
+                value={form.hourlyRate}
+                onChangeText={(t) => setForm({ ...form, hourlyRate: t })}
+                placeholder="e.g., 25"
+              />
+            </View>
+            <View>
+              <Text style={styles.label}>Hours per Week</Text>
+              <TextInput
+                style={styles.input}
+                keyboardType="numeric"
+                value={form.hoursPerWeek}
+                onChangeText={(t) => setForm({ ...form, hoursPerWeek: t })}
+                placeholder="e.g., 40"
+              />
+            </View>
+          </View>
+        )}
+
+        <View style={styles.derivedRow}>
+          <Text style={styles.derivedLabel}>Monthly Income (calculated)</Text>
+          <Text style={styles.derivedValue}>${monthlyIncomeDerived.toFixed(0)}</Text>
+        </View>
 
         <Text style={styles.label}>Fixed Expenses ($)</Text>
         <TextInput
@@ -155,4 +222,12 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  toggleRow: { flexDirection: 'row', backgroundColor: '#f1f5f9', borderRadius: 8, padding: 4, gap: 8 },
+  toggleBtn: { flex: 1, paddingVertical: 10, borderRadius: 6, alignItems: 'center' },
+  toggleBtnActive: { backgroundColor: '#0f172a' },
+  toggleText: { color: '#0f172a', fontWeight: '700' },
+  toggleTextActive: { color: '#fff' },
+  derivedRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 },
+  derivedLabel: { fontSize: 14, fontWeight: '600', color: '#64748b' },
+  derivedValue: { fontSize: 16, fontWeight: '700', color: '#0f172a' },
 });

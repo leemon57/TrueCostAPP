@@ -1,8 +1,50 @@
 import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 
-// Helper to generate IDs
-const generateId = () => Math.random().toString(36).substring(2, 15);
+// Helper to generate stable, collision-resistant IDs (UUID v4-ish)
+const generateId = () => {
+  const cryptoObj = (globalThis as any)?.crypto;
+
+  if (typeof cryptoObj?.randomUUID === 'function') return cryptoObj.randomUUID();
+
+  const getRandomValues: ((typedArray: Uint8Array) => Uint8Array) | undefined =
+    typeof cryptoObj?.getRandomValues === 'function'
+      ? cryptoObj.getRandomValues.bind(cryptoObj)
+      : undefined;
+
+  const bytes = getRandomValues
+    ? Array.from(getRandomValues(new Uint8Array(16)))
+    : Array.from({ length: 16 }, () => Math.floor(Math.random() * 256));
+
+  // Variant and version bits
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+  const hex = (n: number) => n.toString(16).padStart(2, '0');
+
+  return (
+    hex(bytes[0]) +
+    hex(bytes[1]) +
+    hex(bytes[2]) +
+    hex(bytes[3]) +
+    '-' +
+    hex(bytes[4]) +
+    hex(bytes[5]) +
+    '-' +
+    hex(bytes[6]) +
+    hex(bytes[7]) +
+    '-' +
+    hex(bytes[8]) +
+    hex(bytes[9]) +
+    '-' +
+    hex(bytes[10]) +
+    hex(bytes[11]) +
+    hex(bytes[12]) +
+    hex(bytes[13]) +
+    hex(bytes[14]) +
+    hex(bytes[15])
+  );
+};
 
 // --- Users ---
 export const users = sqliteTable('users', {
@@ -16,7 +58,7 @@ export const users = sqliteTable('users', {
 // --- Budget Profile (Onboarding Data) ---
 export const budgetProfiles = sqliteTable('budget_profiles', {
   id: text('id').primaryKey().$defaultFn(generateId),
-  userId: text('user_id').references(() => users.id),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   
   // Income details
   monthlyIncome: real('monthly_income'),
@@ -42,14 +84,14 @@ export const expenses = sqliteTable('expenses', {
   date: integer('date', { mode: 'timestamp' }).notNull(),
   category: text('category').notNull(),
   imageUri: text('image_uri'), // Path to local receipt image
-  userId: text('user_id').references(() => users.id),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   createdAt: integer('created_at', { mode: 'timestamp' }).default(sql`(CURRENT_TIMESTAMP)`),
 });
 
 // --- Subscriptions (New) ---
 export const subscriptions = sqliteTable('subscriptions', {
   id: text('id').primaryKey().$defaultFn(generateId),
-  userId: text('user_id').references(() => users.id),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   amount: real('amount').notNull(),
   category: text('category').default('Subscriptions'),
@@ -62,7 +104,7 @@ export const subscriptions = sqliteTable('subscriptions', {
 // --- Loan Scenarios ---
 export const loanScenarios = sqliteTable('loan_scenarios', {
   id: text('id').primaryKey().$defaultFn(generateId),
-  userId: text('user_id').references(() => users.id),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   
   // Financial Data

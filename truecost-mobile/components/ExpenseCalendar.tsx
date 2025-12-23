@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
 import { 
   format, 
@@ -23,6 +23,9 @@ type Expense = {
   date: Date | null;
 };
 
+const HIGH_SPEND_THRESHOLD = 100;
+const DAY_KEY_FORMAT = 'yyyy-MM-dd';
+
 export default function ExpenseCalendar({ expenses }: { expenses: Expense[] }) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
@@ -38,15 +41,33 @@ export default function ExpenseCalendar({ expenses }: { expenses: Expense[] }) {
   const prevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
 
   // --- Data Logic ---
+  const totalsByDay = useMemo(() => {
+    const map = new Map<string, number>();
+    expenses.forEach((e) => {
+      if (!e.date) return;
+      const key = format(e.date, DAY_KEY_FORMAT);
+      const amount = Number(e.amount) || 0;
+      map.set(key, (map.get(key) || 0) + amount);
+    });
+    return map;
+  }, [expenses]);
+
   const getDailyTotal = (day: Date) => {
-    return expenses
-      .filter(e => e.date && isSameDay(e.date, day))
-      .reduce((sum, e) => sum + (e.amount || 0), 0);
+    return totalsByDay.get(format(day, DAY_KEY_FORMAT)) || 0;
   };
 
-  const monthlyTotal = expenses
-    .filter((e) => e.date && isSameMonth(e.date, currentMonth))
-    .reduce((sum, e) => sum + (e.amount || 0), 0);
+  const monthlyTotals = useMemo(() => {
+    return expenses.reduce(
+      (acc, e) => {
+        if (e.date && isSameMonth(e.date, currentMonth)) {
+          acc.amount += Number(e.amount) || 0;
+          acc.count += 1;
+        }
+        return acc;
+      },
+      { amount: 0, count: 0 }
+    );
+  }, [expenses, currentMonth]);
 
   // Calculate cell width (Screen width - padding) / 7
   const screenWidth = Dimensions.get('window').width;
@@ -81,7 +102,7 @@ export default function ExpenseCalendar({ expenses }: { expenses: Expense[] }) {
 
       {/* Calendar Grid */}
       <View style={styles.grid}>
-        {calendarDays.map((day, i) => {
+        {calendarDays.map((day) => {
           const total = getDailyTotal(day);
           const isCurrent = isSameMonth(day, monthStart);
           const isTodayDate = isToday(day);
@@ -108,11 +129,11 @@ export default function ExpenseCalendar({ expenses }: { expenses: Expense[] }) {
               {total > 0 && (
                 <View style={[
                   styles.expensePill,
-                  total > 100 ? styles.pillHigh : styles.pillNormal
+                  total > HIGH_SPEND_THRESHOLD ? styles.pillHigh : styles.pillNormal
                 ]}>
                   <Text style={[
                     styles.pillText,
-                    total > 100 ? styles.pillTextHigh : styles.pillTextNormal
+                    total > HIGH_SPEND_THRESHOLD ? styles.pillTextHigh : styles.pillTextNormal
                   ]} numberOfLines={1}>
                     ${Math.round(total)}
                   </Text>
@@ -132,12 +153,12 @@ export default function ExpenseCalendar({ expenses }: { expenses: Expense[] }) {
           <View>
             <Text style={styles.footerLabel}>Total for {format(currentMonth, "MMMM")}</Text>
             <Text style={styles.footerSub}>
-              {expenses.filter(e => e.date && isSameMonth(e.date, currentMonth)).length} transactions
+              {monthlyTotals.count} transactions
             </Text>
           </View>
         </View>
         <Text style={styles.footerAmount}>
-          ${monthlyTotal.toLocaleString('en-CA', { minimumFractionDigits: 0 })}
+          ${monthlyTotals.amount.toLocaleString('en-CA', { minimumFractionDigits: 0 })}
         </Text>
       </View>
 

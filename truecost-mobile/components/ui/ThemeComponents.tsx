@@ -8,12 +8,18 @@ import { AppColors } from '@/constants/Colors';
 export const ScreenHeader = ({ title, showBack = true }: { title: string; showBack?: boolean }) => (
   <View style={styles.header}>
     {showBack && (
-      <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}>
+      <TouchableOpacity
+        onPress={() => router.back()}
+        style={styles.iconBtn}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        accessibilityRole="button"
+        accessibilityLabel="Close"
+      >
         <Ionicons name="close" size={24} color={AppColors.text.primary} />
       </TouchableOpacity>
     )}
     <Text style={styles.headerTitle}>{title}</Text>
-    {showBack && <View style={{ width: 40 }} />} 
+    {showBack && <View style={{ width: 44 }} />}
   </View>
 );
 
@@ -58,7 +64,7 @@ const styles = StyleSheet.create({
     marginBottom: 20
   },
   headerTitle: { fontSize: 18, fontWeight: '700', color: AppColors.text.primary },
-  iconBtn: { padding: 8, backgroundColor: AppColors.secondary, borderRadius: 20 },
+  iconBtn: { width: 44, height: 44, backgroundColor: AppColors.secondary, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
 
   // Input Styles
   inputContainer: { marginBottom: 16 },
