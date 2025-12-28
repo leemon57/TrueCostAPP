@@ -23,7 +23,7 @@ export default function OnboardingScreen() {
       const existing = await db.select().from(users).where(eq(users.email, 'user@local')).limit(1);
       let userId = existing[0]?.id;
       if (!userId) {
-        await db.insert(users).values({ email: 'user@local', name: 'User' }).onConflictDoNothing();
+        await db.insert(users).values({ email: 'user@local', name: 'User' }).onConflictDoNothing().run();
         const created = await db.select().from(users).where(eq(users.email, 'user@local')).limit(1);
         userId = created[0]?.id;
       }
@@ -33,10 +33,37 @@ export default function OnboardingScreen() {
       const hoursPerWeek = parseFloat(formData.hoursPerWeek) || 0;
       const monthlyIncome = formData.incomeType === 'SALARY' ? salaryAmount / 12 : (hourlyRate * hoursPerWeek * 52) / 12;
 
-      await db.insert(budgetProfiles).values({
-        userId, monthlyIncome, fixedExpenses: 0, variableExpenses: 0, savingsPerMonthTarget: 0, emergencyFund: 0,
-        incomeType: formData.incomeType, salaryAmount, hourlyRate, hoursPerWeek, payFrequency: 'MONTHLY',
-      });
+      const existingProfile = await db
+        .select()
+        .from(budgetProfiles)
+        .where(eq(budgetProfiles.userId, userId!))
+        .limit(1);
+
+      if (existingProfile.length > 0) {
+        await db
+          .update(budgetProfiles)
+          .set({
+            monthlyIncome,
+            fixedExpenses: existingProfile[0].fixedExpenses ?? 0,
+            variableExpenses: existingProfile[0].variableExpenses ?? 0,
+            savingsPerMonthTarget: existingProfile[0].savingsPerMonthTarget ?? 0,
+            emergencyFund: existingProfile[0].emergencyFund ?? 0,
+            incomeType: formData.incomeType,
+            salaryAmount,
+            hourlyRate,
+            hoursPerWeek,
+            payFrequency: existingProfile[0].payFrequency ?? 'MONTHLY',
+            updatedAt: new Date(),
+          })
+          .where(eq(budgetProfiles.id, existingProfile[0].id))
+          .run();
+      } else {
+        await db.insert(budgetProfiles).values({
+          userId, monthlyIncome, fixedExpenses: 0, variableExpenses: 0, savingsPerMonthTarget: 0, emergencyFund: 0,
+          incomeType: formData.incomeType, salaryAmount, hourlyRate, hoursPerWeek, payFrequency: 'MONTHLY',
+          updatedAt: new Date(),
+        }).run();
+      }
       router.replace('/(tabs)');
     } catch (e) { console.error(e); }
   };

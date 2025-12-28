@@ -19,7 +19,9 @@ export default function BudgetScreen() {
   const { data: allExpenses } = useLiveQuery(
     db.select().from(expenses).orderBy(desc(expenses.date))
   );
-  const { data: profiles } = useLiveQuery(db.select().from(budgetProfiles));
+  const { data: profiles } = useLiveQuery(
+    db.select().from(budgetProfiles).orderBy(desc(budgetProfiles.updatedAt))
+  );
   
   // 2. Budget Logic (Strictly Current Month)
   const profile = profiles?.[0];

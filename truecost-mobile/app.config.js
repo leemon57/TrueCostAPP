@@ -24,7 +24,8 @@ export default {
       predictiveBackGestureEnabled: false,
     },
     web: {
-      output: 'static',
+      // Required for expo-router API routes
+      output: 'server',
       favicon: './assets/images/favicon.png',
     },
     plugins: [

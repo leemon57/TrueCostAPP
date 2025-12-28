@@ -68,7 +68,8 @@ export default function SettingsScreen() {
     if (!profileId) return;
 
     try {
-      await db.update(budgetProfiles)
+      await db
+        .update(budgetProfiles)
         .set({
           incomeType: form.incomeType,
           salaryAmount: parseFloat(form.salaryAmount) || 0,
@@ -79,8 +80,10 @@ export default function SettingsScreen() {
           variableExpenses: parseFloat(form.variableExpenses) || 0,
           savingsPerMonthTarget: parseFloat(form.savingsTarget) || 0,
           emergencyFund: parseFloat(form.emergencyFund) || 0,
+          updatedAt: new Date(),
         })
-        .where(eq(budgetProfiles.id, profileId));
+        .where(eq(budgetProfiles.id, profileId))
+        .run();
 
       Alert.alert('Success', 'Profile updated successfully.');
       router.back();
