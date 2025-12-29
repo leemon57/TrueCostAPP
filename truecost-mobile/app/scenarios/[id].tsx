@@ -17,6 +17,10 @@ export default function ScenarioDetailScreen() {
 
   if (!scenario) return <View style={styles.container} />;
 
+  const createdDate = scenario.createdAt
+    ? new Date(scenario.createdAt)
+    : null;
+
   // 1. Replaced complex useMemo with utility
   const stats = calculateLoan({
     principal: scenario.principal,
@@ -29,14 +33,14 @@ export default function ScenarioDetailScreen() {
     Alert.alert("Delete Model", "This cannot be undone.", [
       { text: "Cancel", style: "cancel" },
       { text: "Delete", style: "destructive", onPress: async () => {
-          await db.delete(loanScenarios).where(eq(loanScenarios.id, id as string));
+          await db.delete(loanScenarios).where(eq(loanScenarios.id, id as string)).run();
           router.back();
       }}
     ]);
   };
 
   const toggleActive = async (val: boolean) => {
-    await db.update(loanScenarios).set({ includeInTotals: val }).where(eq(loanScenarios.id, id as string));
+    await db.update(loanScenarios).set({ includeInTotals: val }).where(eq(loanScenarios.id, id as string)).run();
   };
 
   const formatMoney = (val: number) => new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(val);
@@ -49,9 +53,11 @@ export default function ScenarioDetailScreen() {
         <View style={styles.titleRow}>
            <View>
              <Text style={styles.title}>{scenario.name}</Text>
-             <Text style={styles.subtitle}>Created {new Date(scenario.createdAt!).toLocaleDateString()}</Text>
-           </View>
-           <TouchableOpacity onPress={handleDelete} style={styles.deleteBtn}>
+             <Text style={styles.subtitle}>
+               Created {createdDate ? createdDate.toLocaleDateString() : 'Unknown'}
+             </Text>
+          </View>
+          <TouchableOpacity onPress={handleDelete} style={styles.deleteBtn}>
              <Ionicons name="trash-outline" size={20} color={AppColors.danger} />
            </TouchableOpacity>
         </View>

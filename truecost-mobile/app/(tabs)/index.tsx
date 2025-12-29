@@ -1,6 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Platform } from "react-native";
-import Constants from "expo-constants";
+import React, { useMemo } from "react";
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from "react-native";
 import { useLiveQuery } from "drizzle-orm/expo-sqlite";
 import { db } from "@/db/client";
 import { expenses, loanScenarios, subscriptions } from "@/db/schema";
@@ -9,23 +8,9 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { format } from "date-fns";
 import { AppColors } from "@/constants/Colors";
-import AiTipsCard from "@/components/AiTipsCard";
 import { calculateLoan, PAYMENTS_PER_YEAR } from "@/utils/loanCalculator";
 
 const DEFAULT_ANNUAL_RATE = 0.05;
-
-const buildApiUrl = () => {
-  if (Platform.OS === "web") return "/api/ai/insights";
-  // Try to derive dev-server URL for native
-  const hostUri = Constants.expoConfig?.hostUri;
-  if (hostUri) {
-    const [host, portWithPath] = hostUri.split(":");
-    const port = portWithPath?.split("/")[0] || "8081";
-    return `http://${host}:${port}/api/ai/insights`;
-  }
-  const envBase = process.env.EXPO_PUBLIC_API_URL;
-  return envBase ? `${envBase.replace(/\/$/, "")}/api/ai/insights` : null;
-};
 
 export default function DashboardScreen() {
   const { data: recentExpenses } = useLiveQuery(
@@ -33,10 +18,6 @@ export default function DashboardScreen() {
   );
   const { data: allScenarios } = useLiveQuery(db.select().from(loanScenarios));
   const { data: allSubs } = useLiveQuery(db.select().from(subscriptions));
-
-  const [aiTips, setAiTips] = useState<string[]>([]);
-  const [aiForecast, setAiForecast] = useState<string>("");
-  const [aiLoading, setAiLoading] = useState(false);
 
   const stats = useMemo(() => {
     // 1. Expenses (Current Month Approximation for demo)
@@ -76,74 +57,6 @@ export default function DashboardScreen() {
 
   const formatMoney = (val: number) => 
     new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD', maximumFractionDigits: 0 }).format(val);
-
-  const scenarioPayload = useMemo(() => {
-    return (allScenarios || []).map((s) => ({
-      name: s.name,
-      principal: s.principal,
-      termMonths: s.termMonths,
-      paymentFrequency: s.paymentFrequency,
-      fixedAnnualRate: s.fixedAnnualRate,
-      spreadOverPolicyRate: s.spreadOverPolicyRate,
-    }));
-  }, [allScenarios]);
-
-  const summaryPayload = useMemo(() => {
-    const topCategories = (recentExpenses || [])
-      .reduce<Record<string, number>>((acc, e) => {
-        acc[e.category] = (acc[e.category] || 0) + e.amount;
-        return acc;
-      }, {});
-
-    const topCatEntries = Object.entries(topCategories)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
-      .map(([cat, amt]) => `${cat}: ${formatMoney(amt)}`)
-      .join(", ");
-
-    const activeSubs = (allSubs || []).filter((s) => s.isActive).length;
-
-    return [
-      `Monthly totals — Expenses: ${formatMoney(stats.expenses)}, Subs: ${formatMoney(stats.fixed)}, Loans: ${formatMoney(stats.loans)}, Total: ${formatMoney(stats.total)}.`,
-      topCatEntries ? `Top categories: ${topCatEntries}.` : "Top categories: none recorded.",
-      `Active subscriptions: ${activeSubs}.`,
-    ].join(" ");
-  }, [allSubs, recentExpenses, stats]);
-
-  const refreshAiInsights = useCallback(async () => {
-    const apiUrl = buildApiUrl();
-    if (!apiUrl) {
-      setAiTips(["AI tips are currently unavailable. No API URL configured."]);
-      setAiForecast("");
-      return;
-    }
-
-    setAiLoading(true);
-    try {
-      const res = await fetch(apiUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          summary: summaryPayload,
-          scenarios: scenarioPayload,
-        }),
-      });
-
-      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
-      const json = await res.json();
-      setAiTips(Array.isArray(json?.tips) ? json.tips : []);
-      setAiForecast(typeof json?.forecast === "string" ? json.forecast : "");
-    } catch (e) {
-      setAiTips(["AI tips are currently unavailable. Check your connection or API key."]);
-      setAiForecast("");
-    } finally {
-      setAiLoading(false);
-    }
-  }, [scenarioPayload, summaryPayload]);
-
-  useEffect(() => {
-    refreshAiInsights();
-  }, [refreshAiInsights]);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
@@ -202,16 +115,6 @@ export default function DashboardScreen() {
             <Text style={styles.statLabel}>Loans</Text>
           </View>
         </TouchableOpacity>
-      </View>
-
-      {/* AI Tips Card */}
-      <View style={{ marginBottom: 24 }}>
-        <AiTipsCard
-          tips={aiTips}
-          forecast={aiForecast}
-          loading={aiLoading}
-          onPress={refreshAiInsights}
-        />
       </View>
 
       {/* Recent Activity */}

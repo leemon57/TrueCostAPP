@@ -5,6 +5,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { db } from '@/db/client';
 import { expenses, budgetProfiles, loanScenarios, subscriptions } from '@/db/schema';
 import { AppColors } from '@/constants/Colors';
+// Import the new utility functions
+import { backupData, restoreData } from '@/utils/backup';
 
 export default function SettingsScreen() {
   const handleClearData = () => {
@@ -38,7 +40,11 @@ export default function SettingsScreen() {
 
       <View style={styles.section}>
         <SettingsItem icon="person-outline" label="Edit Profile & Income" onPress={() => router.push('/onboarding')} />
-        {/* 'Manage Subscriptions' removed to avoid redundancy */}
+      </View>
+
+      <View style={styles.section}>
+        <SettingsItem icon="cloud-upload-outline" label="Backup Data" onPress={backupData} />
+        <SettingsItem icon="cloud-download-outline" label="Restore Data" onPress={restoreData} />
       </View>
 
       <View style={styles.section}>

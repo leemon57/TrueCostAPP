@@ -47,6 +47,7 @@ export default function AddScenarioScreen() {
       spreadOverPolicyRate: rateSource !== 'FIXED' ? rateValue : null,
       currency: 'CAD',
       includeInTotals: true,
+      createdAt: new Date(),
     }).run();
     router.back();
   };

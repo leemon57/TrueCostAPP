@@ -3,25 +3,29 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, ViewStyle, TextInp
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { AppColors } from '@/constants/Colors';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // --- 1. Standard Header ---
-export const ScreenHeader = ({ title, showBack = true }: { title: string; showBack?: boolean }) => (
-  <View style={styles.header}>
-    {showBack && (
-      <TouchableOpacity
-        onPress={() => router.back()}
-        style={styles.iconBtn}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        accessibilityRole="button"
-        accessibilityLabel="Close"
-      >
-        <Ionicons name="close" size={24} color={AppColors.text.primary} />
-      </TouchableOpacity>
-    )}
-    <Text style={styles.headerTitle}>{title}</Text>
-    {showBack && <View style={{ width: 44 }} />}
-  </View>
-);
+export const ScreenHeader = ({ title, showBack = true }: { title: string; showBack?: boolean }) => {
+  const { top } = useSafeAreaInsets();
+  return (
+    <View style={[styles.header, { paddingTop: top + 12 }]}>
+      {showBack && (
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.iconBtn}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+        >
+          <Ionicons name="close" size={24} color={AppColors.text.primary} />
+        </TouchableOpacity>
+      )}
+      <Text style={styles.headerTitle}>{title}</Text>
+      {showBack && <View style={{ width: 44 }} />}
+    </View>
+  );
+};
 
 // --- 2. Standard Input ---
 interface AppInputProps extends TextInputProps {
