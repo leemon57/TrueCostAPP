@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, ScrollView, Image } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, ScrollView, Image, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import { db } from '@/db/client';
 import { expenses } from '@/db/schema';
 import CategoryChip from '@/components/ui/CategoryChip';
@@ -10,12 +11,35 @@ import { AppColors } from '@/constants/Colors';
 import { ScreenHeader, AppInput, AppButton } from '@/components/ui/ThemeComponents';
 
 const CATEGORIES = ["Food", "Transport", "Bills", "Health", "Shopping", "Entertainment", "Other"];
+const RECEIPTS_DIR = `${FileSystem.documentDirectory}receipts`;
 
 export default function AddExpenseScreen() {
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('');
   const [note, setNote] = useState('');
   const [imageUri, setImageUri] = useState<string | null>(null);
+
+  const ensureReceiptsDir = async () => {
+    const dirInfo = await FileSystem.getInfoAsync(RECEIPTS_DIR);
+    if (!dirInfo.exists) {
+      await FileSystem.makeDirectoryAsync(RECEIPTS_DIR, { intermediates: true });
+    }
+  };
+
+  const persistPickedImage = async (sourceUri: string) => {
+    await ensureReceiptsDir();
+
+    const extensionMatch = sourceUri.match(/\.([a-zA-Z0-9]+)(?:\?|$)/);
+    const extension = extensionMatch?.[1]?.toLowerCase() || 'jpg';
+    const destinationUri = `${RECEIPTS_DIR}/receipt-${Date.now()}.${extension}`;
+
+    await FileSystem.copyAsync({
+      from: sourceUri,
+      to: destinationUri,
+    });
+
+    return destinationUri;
+  };
 
   const handleSave = async (addAnother = false) => {
     if (!amount || !category) return;
@@ -26,16 +50,40 @@ export default function AddExpenseScreen() {
       date: new Date(),
       imageUri
     });
-    addAnother ? (setAmount(''), setCategory(''), setNote(''), setImageUri(null)) : router.back();
+    if (addAnother) {
+      setAmount('');
+      setCategory('');
+      setNote('');
+      setImageUri(null);
+      return;
+    }
+
+    router.back();
   };
 
   const pickImage = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission required', 'Please allow photo library access to attach a receipt image.');
+      return;
+    }
+
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: 'images',
       allowsEditing: true,
       quality: 0.5,
     });
-    if (!result.canceled) setImageUri(result.assets[0].uri);
+
+    if (result.canceled || !result.assets?.length) return;
+
+    try {
+      const persistedUri = await persistPickedImage(result.assets[0].uri);
+      setImageUri(persistedUri);
+    } catch (error) {
+      console.error('Failed to persist receipt image', error);
+      // Keep the picked URI as a fallback even if persistence fails.
+      setImageUri(result.assets[0].uri);
+    }
   };
 
   return (

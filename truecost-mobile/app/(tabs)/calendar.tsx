@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, Modal } from 'react-native';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { db } from '@/db/client';
 import { expenses } from '@/db/schema';
@@ -8,8 +8,21 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { AppColors } from '@/constants/Colors';
 
+const normalizeImageUri = (uri: string) => {
+  if (
+    uri.startsWith('file://') ||
+    uri.startsWith('content://') ||
+    uri.startsWith('http://') ||
+    uri.startsWith('https://')
+  ) {
+    return uri;
+  }
+  return `file://${uri}`;
+};
+
 export default function CalendarScreen() {
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [viewerUri, setViewerUri] = useState<string | null>(null);
   const { data: allExpenses } = useLiveQuery(db.select().from(expenses));
 
   // --- Month Navigation ---
@@ -82,17 +95,42 @@ export default function CalendarScreen() {
           data={selectedDayExpenses}
           keyExtractor={item => item.id}
           ListEmptyComponent={<Text style={styles.emptyText}>No spending recorded.</Text>}
-          renderItem={({ item }) => (
-            <View style={styles.expenseItem}>
-              <View>
-                <Text style={styles.expenseCategory}>{item.category}</Text>
-                {item.description && <Text style={styles.expenseNote}>{item.description}</Text>}
+          renderItem={({ item }) => {
+            const receiptUri = item.imageUri ? normalizeImageUri(item.imageUri) : null;
+
+            return (
+              <View style={styles.expenseItem}>
+                <View style={styles.expenseTextCol}>
+                  <Text style={styles.expenseCategory}>{item.category}</Text>
+                  {item.description && <Text style={styles.expenseNote}>{item.description}</Text>}
+                </View>
+                <View style={styles.expenseRight}>
+                  {receiptUri && (
+                    <TouchableOpacity style={styles.receiptThumbBtn} onPress={() => setViewerUri(receiptUri)}>
+                      <Image source={{ uri: receiptUri }} style={styles.receiptThumb} />
+                    </TouchableOpacity>
+                  )}
+                  <Text style={styles.expenseAmount}>${item.amount.toFixed(2)}</Text>
+                </View>
               </View>
-              <Text style={styles.expenseAmount}>${item.amount.toFixed(2)}</Text>
-            </View>
-          )}
+            );
+          }}
         />
       </View>
+
+      <Modal
+        visible={Boolean(viewerUri)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setViewerUri(null)}
+      >
+        <View style={styles.viewerOverlay}>
+          <TouchableOpacity style={styles.viewerCloseBtn} onPress={() => setViewerUri(null)}>
+            <Ionicons name="close" size={28} color="#fff" />
+          </TouchableOpacity>
+          {viewerUri && <Image source={{ uri: viewerUri }} style={styles.viewerImage} resizeMode="contain" />}
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -117,7 +155,14 @@ const styles = StyleSheet.create({
   detailTitle: { fontSize: 18, fontWeight: '600', marginBottom: 16, color: AppColors.text.primary },
   emptyText: { color: AppColors.text.secondary, fontStyle: 'italic' },
   expenseItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: AppColors.secondary },
+  expenseTextCol: { flex: 1, paddingRight: 12 },
+  expenseRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  receiptThumbBtn: { width: 44, height: 44, borderRadius: 10, overflow: 'hidden', borderWidth: 1, borderColor: AppColors.border },
+  receiptThumb: { width: '100%', height: '100%' },
   expenseCategory: { fontSize: 16, fontWeight: '500', color: AppColors.text.primary },
   expenseNote: { fontSize: 12, color: AppColors.text.secondary },
   expenseAmount: { fontSize: 16, fontWeight: '600', color: AppColors.text.primary },
+  viewerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.94)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 16 },
+  viewerImage: { width: '100%', height: '80%' },
+  viewerCloseBtn: { position: 'absolute', top: 56, right: 24, zIndex: 2, padding: 6 },
 });
